@@ -1,0 +1,818 @@
+{% extends "base.html" %}
+{% block title %}系统设置{% endblock %}
+{% block page_title %}<i class="bi bi-gear"></i> 系统设置{% endblock %}
+
+{% block extra_css %}
+<style>
+.settings-nav-card {
+    position: sticky;
+    top: 20px;
+}
+.settings-nav-card .list-group-item {
+    border: none;
+    border-radius: var(--radius-sm) !important;
+    margin-bottom: 4px;
+    padding: 12px 16px;
+    color: var(--text);
+    font-weight: 500;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+}
+.settings-nav-card .list-group-item:hover {
+    background-color: rgba(67, 97, 238, 0.08);
+    color: var(--primary);
+}
+.settings-nav-card .list-group-item.active {
+    background-color: var(--primary);
+    color: #fff;
+    border-left-color: var(--primary-dark);
+}
+.settings-nav-card .list-group-item i {
+    width: 20px;
+    text-align: center
+}
+
+.provider-list .list-group-item {
+    border: none;
+    border-radius: var(--radius-sm) !important;
+    margin-bottom: 4px;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+}
+.provider-list .list-group-item:hover {
+    background-color: rgba(67, 97, 238, 0.06);
+}
+.provider-list .list-group-item.active {
+    background-color: rgba(67, 97, 238, 0.1);
+    border-left-color: var(--primary);
+    color: var(--primary);
+}
+.provider-list .list-group-item .provider-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    line-height: 1.2;
+}
+.provider-list .list-group-item .provider-sub {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+#llm-form-container {
+    min-height: 320px;
+}
+.provider-list .list-group-item .provider-del {
+    opacity: 0.4;
+}
+.provider-list .list-group-item:hover .provider-del {
+    opacity: 1;
+}
+/* ── Dark Mode ── */
+body.dark-mode .settings-nav-card .list-group-item { color: #cbd5e1; }
+body.dark-mode .settings-nav-card .list-group-item:hover { background: rgba(67,97,238,0.1); }
+body.dark-mode .provider-list .list-group-item:hover { background: rgba(67,97,238,0.1); }</style>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+
+    <!-- ===== 左侧：分类导航 ===== -->
+    <div class="col-12 col-md-3">
+        <div class="card settings-nav-card">
+            <div class="card-header"><i class="bi bi-gear me-2"></i>设置分类</div>
+            <div class="list-group list-group-flush" role="tablist">
+                <a class="list-group-item list-group-item-action active" id="nav-llm-tab"
+                   data-bs-toggle="pill" href="#nav-llm" role="tab">
+                    <i class="bi bi-cpu"></i> LLM 提供商
+                </a>
+                <a class="list-group-item list-group-item-action" id="nav-smtp-tab"
+                   data-bs-toggle="pill" href="#nav-smtp" role="tab">
+                    <i class="bi bi-envelope"></i> SMTP 邮件
+                </a>
+                <a class="list-group-item list-group-item-action" id="nav-memory-tab"
+                   data-bs-toggle="pill" href="#nav-memory" role="tab">
+                    <i class="bi bi-archive"></i> 记忆系统
+                </a>
+                <a class="list-group-item list-group-item-action" id="nav-auth-tab"
+                   data-bs-toggle="pill" href="#nav-auth" role="tab">
+                    <i class="bi bi-shield-lock"></i> 认证设置
+                </a>
+                <a class="list-group-item list-group-item-action" id="nav-storage-tab"
+                   data-bs-toggle="pill" href="#nav-storage" role="tab">
+                    <i class="bi bi-folder"></i> 存储路径
+                </a>
+                <a class="list-group-item list-group-item-action" id="nav-all-tab"
+                   data-bs-toggle="pill" href="#nav-all" role="tab">
+                    <i class="bi bi-list"></i> 全部配置
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 右侧：标签内容 ===== -->
+    <div class="col-12 col-md-9">
+        <div class="tab-content">
+
+            <!-- ── LLM 提供商配置 ── -->
+            <div class="tab-pane fade show active" id="nav-llm" role="tabpanel">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-cpu me-2"></i>LLM 提供商配置</span>
+                        <button class="btn btn-outline-success btn-sm" onclick="testConnection()">
+                            <i class="bi bi-plug"></i> 测试连接
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-0">
+                            <!-- 提供商列表 -->
+                            <div class="col-md-4 border-end pe-2">
+                                <div class="mb-2">
+                                    <input type="text" class="form-control form-control-sm" id="provider-filter" placeholder="搜索提供商..." oninput="onProviderFilterChange(this.value)">
+                                </div>
+                                <div class="provider-list" id="provider-list">
+                                    <!-- 由 JS 渲染 -->
+                                </div>
+                            </div>
+                            <!-- 配置表单 -->
+                            <div class="col-md-8 ps-3" id="llm-form-container">
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <label class="form-label fw-600">提供商名称</label>
+                                        <input type="text" class="form-control" id="llm_provider_name" placeholder="自定义">
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label fw-600">API URL</label>
+                                        <input type="text" class="form-control" id="llm_api_url" placeholder="https://...">
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label fw-600">认证类型</label>
+                                        <select class="form-select" id="llm_auth_type">
+                                            <option value="Anthropic">Anthropic 兼容模式</option>
+                                            <option value="OpenAI">OpenAI 兼容模式</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-600">API Key</label>
+                                        <div class="input-group">
+                                            <input type="password" class="form-control" id="llm_api_key" placeholder="可选，留空则不传">
+                                            <button class="btn btn-outline-secondary" type="button" onclick="toggleKey()">
+                                                <i class="bi bi-eye" id="key-eye"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-600">模型</label>
+                                        <input type="text" class="form-control" id="llm_model">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-600">API 版本</label>
+                                        <input type="text" class="form-control" id="llm_api_version" placeholder="可选">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-600">最大 Token</label>
+                                        <input type="number" class="form-control" id="llm_max_tokens">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-600">温度</label>
+                                        <input type="number" class="form-control" id="llm_temperature" step="0.1" min="0" max="2">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-600">超时 (秒)</label>
+                                        <input type="number" class="form-control" id="llm_timeout">
+                                    </div>
+                                </div>
+
+                                <div id="test-result" class="mt-3" style="display:none;"></div>
+
+                                <div class="mt-3 d-flex align-items-center gap-3 flex-wrap">
+                                    <div class="form-check mb-0">
+                                        <input class="form-check-input" type="checkbox" id="llm_set_active" checked>
+                                        <label class="form-check-label fw-600" for="llm_set_active">
+                                            <i class="bi bi-check-circle"></i> 设为当前启用
+                                        </label>
+                                    </div>
+                                    <button class="btn btn-primary" onclick="saveLlmSettings()">
+                                        <i class="bi bi-check-circle"></i> 保存配置
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── SMTP 邮件配置 ── -->
+            <div class="tab-pane fade" id="nav-smtp" role="tabpanel">
+                <div class="card">
+                    <div class="card-header"><i class="bi bi-envelope me-2"></i>SMTP 邮件配置</div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">服务器地址</label>
+                                <input type="text" class="form-control" id="smtp_host">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label fw-600">端口</label>
+                                <input type="number" class="form-control" id="smtp_port">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-600">用户名</label>
+                                <input type="text" class="form-control" id="smtp_username">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-600">密码</label>
+                                <input type="password" class="form-control" id="smtp_password">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">发件人地址</label>
+                                <input type="email" class="form-control" id="smtp_from">
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <button class="btn btn-primary" onclick="saveSmtpSettings()">
+                                <i class="bi bi-check-circle"></i> 保存 SMTP 配置
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── 记忆系统配置 ── -->
+            <div class="tab-pane fade" id="nav-memory" role="tabpanel">
+                <div class="card">
+                    <div class="card-header"><i class="bi bi-brain me-2"></i>记忆系统配置</div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">会话记忆 TTL (秒)</label>
+                                <input type="number" class="form-control" id="memory_session_ttl">
+                                <small class="text-muted">会话记忆过期时间</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">会话最大条数</label>
+                                <input type="number" class="form-control" id="memory_session_max_size">
+                                <small class="text-muted">单会话最大记忆条数</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">检索最低保留率</label>
+                                <input type="number" class="form-control" id="memory_min_retention" step="0.05" min="0" max="1">
+                                <small class="text-muted">低于此保留率的记忆不返回</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">归档阈值</label>
+                                <input type="number" class="form-control" id="memory_archive_threshold" step="0.05" min="0" max="1">
+                                <small class="text-muted">低于此保留率自动归档</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">上下文注入最大条数</label>
+                                <input type="number" class="form-control" id="memory_max_context_memories">
+                                <small class="text-muted">每次注入最多取多少条</small>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <button class="btn btn-primary" onclick="saveCategory('memory')">
+                                <i class="bi bi-check-circle"></i> 保存记忆配置
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── 认证设置 ── -->
+            <div class="tab-pane fade" id="nav-auth" role="tabpanel">
+                <div class="card">
+                    <div class="card-header"><i class="bi bi-shield-lock me-2"></i>认证设置</div>
+                    <div class="card-body">
+                        <p class="text-muted small">以下配置重启后生效。API Key 等敏感配置在首次启动时从环境变量读取。</p>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">Cookie 名称</label>
+                                <input type="text" class="form-control" id="auth_cookie_name">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">Cookie 有效期 (秒)</label>
+                                <input type="number" class="form-control" id="auth_cookie_max_age">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">认证盐值</label>
+                                <input type="text" class="form-control" id="auth_salt">
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <button class="btn btn-primary" onclick="saveCategory('auth')">
+                                <i class="bi bi-check-circle"></i> 保存认证配置
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── 存储路径 ── -->
+            <div class="tab-pane fade" id="nav-storage" role="tabpanel">
+                <div class="card">
+                    <div class="card-header"><i class="bi bi-folder me-2"></i>存储路径配置</div>
+                    <div class="card-body">
+                        <p class="text-muted small">修改路径需要重启服务器生效。</p>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label fw-600">ChromaDB 向量存储路径</label>
+                                <input type="text" class="form-control" id="chroma_path">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">智能体定义目录</label>
+                                <input type="text" class="form-control" id="agents_dir">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">技能定义目录</label>
+                                <input type="text" class="form-control" id="skills_dir">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">契约目录</label>
+                                <input type="text" class="form-control" id="contracts_dir">
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <button class="btn btn-primary" onclick="saveCategory('storage')">
+                                <i class="bi bi-check-circle"></i> 保存路径配置
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── 全部配置 ── -->
+            <div class="tab-pane fade" id="nav-all" role="tabpanel">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-list me-2"></i>全部配置</span>
+                        <button class="btn btn-primary btn-sm" onclick="saveAllSettings()">
+                            <i class="bi bi-save"></i> 保存全部
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="settings-table">
+                                <thead>
+                                    <tr>
+                                        <th>Key</th>
+                                        <th>值</th>
+                                        <th>类型</th>
+                                        <th>分类</th>
+                                        <th>描述</th>
+                                        <th>更新时间</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="settings-tbody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var SMTP_KEYS = ['smtp_host', 'smtp_port', 'smtp_username', 'smtp_password', 'smtp_from'];
+
+// 各分类表单的字段映射
+var CATEGORY_KEYS = {
+    memory: ['memory_session_ttl', 'memory_session_max_size', 'memory_min_retention',
+             'memory_archive_threshold', 'memory_max_context_memories'],
+    auth: ['auth_cookie_name', 'auth_cookie_max_age', 'auth_salt'],
+    storage: ['chroma_path', 'agents_dir', 'skills_dir', 'contracts_dir'],
+};
+
+var providers = [];           // 来自 API
+var selectedProviderId = null;
+var modelCache = {};          // providerId -> [model names]
+var keyVisible = false;
+var providerFilter = '';
+
+function toggleKey() {
+    var input = document.getElementById('llm_api_key');
+    var eye = document.getElementById('key-eye');
+    keyVisible = !keyVisible;
+    input.type = keyVisible ? 'text' : 'password';
+    eye.className = keyVisible ? 'bi bi-eye-slash' : 'bi bi-eye';
+}
+
+function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function formatDate(d) { return d ? String(d).substring(0,19) : ''; }
+
+function onProviderFilterChange(val) {
+    providerFilter = val.toLowerCase();
+    renderProviderList();
+}
+
+// ── 提供商列表渲染 ──
+
+function renderProviderList() {
+    var container = document.getElementById('provider-list');
+    if (!container) return;
+    var html = '';
+    var filtered = providers.filter(function(p) {
+        return !providerFilter || p.name.toLowerCase().indexOf(providerFilter) !== -1;
+    });
+    filtered.forEach(function(p) {
+        var isSel = p.id === selectedProviderId;
+        var isAct = p.is_active === 1 || p.is_active === true || p.is_active === '1';
+        html += '<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-2 ' +
+            (isSel ? 'active' : '') + '" onclick="selectProvider(\'' + p.id + '\')">' +
+            '<i class="bi bi-cpu fs-5"></i>' +
+            '<div class="flex-grow-1"><div class="provider-name">' + esc(p.name) + '</div></div>' +
+            (isAct ? '<span class="badge bg-success rounded-pill"><i class="bi bi-check"></i></span>' :
+                     '<span class="badge bg-light text-muted rounded-pill" style="font-size:0.6rem;">未激活</span>') +
+            (!isAct ? '<i class="bi bi-x-circle-fill text-danger provider-del" style="cursor:pointer;" onclick="event.stopPropagation();deleteProvider(\'' + p.id + '\')" title="删除"></i>' : '') +
+            '</button>';
+    });
+    html += '<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-2 text-success border-top mt-1" onclick="addProvider()">' +
+            '<i class="bi bi-plus-circle fs-5"></i><div><div class="provider-name">添加提供商</div></div></button>';
+    container.innerHTML = html;
+}
+
+// ── 添加提供商 ──
+
+function addProvider() {
+    var btn = event && event.target || document.querySelector('.provider-list button:last-child');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 创建中...'; }
+    fetch('/api/settings/providers', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({name: '自定义', auth_type: 'OpenAI'}),
+    }).then(function(r) { return r.json(); }).then(function(data) {
+        selectedProviderId = data.id;
+        loadProviders();
+    }).catch(function() {
+        showToast('danger', '创建失败');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-plus-circle"></i> 添加提供商'; }
+    });
+}
+
+// ── 删除提供商 ──
+
+function deleteProvider(id) {
+    if (!confirm('确认删除此提供商？')) return;
+    fetch('/api/settings/providers/' + id, {method: 'DELETE'}).then(function(r) {
+        if (!r.ok) throw new Error('删除失败');
+        return r.json();
+    }).then(function() {
+        showToast('success', '已删除');
+        if (selectedProviderId === id) selectedProviderId = null;
+        loadProviders();
+    }).catch(function(e) {
+        showToast('danger', e.message);
+    });
+}
+
+// ── 选择提供商 ──
+
+function selectProvider(providerId) {
+    selectedProviderId = providerId;
+    renderProviderList();
+    loadProviderConfig(providerId);
+}
+
+function getProviderById(id) {
+    for (var i = 0; i < providers.length; i++) {
+        if (providers[i].id === id) return providers[i];
+    }
+    return null;
+}
+
+// ── 加载提供商配置到表单 ──
+
+function loadProviderConfig(providerId) {
+    var p = getProviderById(providerId);
+    if (!p) return;
+
+    document.getElementById('llm_provider_name').value = p.name;
+    document.getElementById('llm_api_url').value = p.api_url || '';
+    var mappedAuth = ({'none': 'OpenAI', 'bearer': 'OpenAI', 'x-api-key': 'Anthropic'})[p.auth_type] || p.auth_type || 'OpenAI';
+    document.getElementById('llm_auth_type').value = mappedAuth;
+    document.getElementById('llm_api_key').value = '';  // API 隐藏，用户手动输入
+    document.getElementById('llm_api_version').value = p.api_version || '';
+    document.getElementById('llm_max_tokens').value = p.max_tokens || '';
+    document.getElementById('llm_temperature').value = p.temperature || '';
+    document.getElementById('llm_timeout').value = p.timeout || '';
+
+    // 模型字段：有缓存时显示下拉，否则显示输入框
+    if (modelCache[providerId] && modelCache[providerId].length > 0) {
+        renderModelDropdown(modelCache[providerId], providerId);
+    } else {
+        renderModelInput(null);
+    }
+    document.getElementById('llm_model').value = p.model || '';
+
+    // Auth type 联动：API 版本输入框可用性
+    var versionInput = document.getElementById('llm_api_version');
+    versionInput.disabled = document.getElementById('llm_auth_type').value !== 'Anthropic';
+
+    // 设为当前启用
+    var isAct = p.is_active === 1 || p.is_active === true || p.is_active === '1';
+    document.getElementById('llm_set_active').checked = isAct;
+}
+
+// ── 模型下拉切换 ──
+
+function renderModelDropdown(models, providerId) {
+    var el = document.getElementById('llm_model');
+    var currentVal = el.value || '';
+    var select = document.createElement('select');
+    select.className = 'form-select';
+    select.id = 'llm_model';
+    select.innerHTML = '<option value="">-- 选择模型 --</option>' +
+        models.map(function(m) {
+            var safe = (m || '').replace(/'/g, "\\'");
+            return '<option value="' + safe + '"' +
+                (m === currentVal ? ' selected' : '') + '>' + esc(m) + '</option>';
+        }).join('');
+    el.parentNode.replaceChild(select, el);
+    modelCache[providerId] = models;
+}
+
+function renderModelInput(val) {
+    var el = document.getElementById('llm_model');
+    if (el && el.tagName === 'INPUT') {
+        if (val !== null && val !== undefined) el.value = val;
+        return;
+    }
+    var currentVal = (el ? el.value : '') || val || '';
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-control';
+    input.id = 'llm_model';
+    input.value = currentVal;
+    if (el) el.parentNode.replaceChild(input, el);
+}
+
+// ── 测试连接 ──
+
+function showTestResult(success, msg) {
+    var el = document.getElementById('test-result');
+    el.style.display = 'block';
+    el.className = 'mt-3 alert alert-' + (success ? 'success' : 'danger');
+    el.innerHTML = msg;
+}
+
+function testConnection() {
+    var pid = selectedProviderId;
+    if (!pid) return;
+    var btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 测试中...';
+
+    var payload = {
+        provider_id: pid,
+        api_url: document.getElementById('llm_api_url').value,
+        auth_type: document.getElementById('llm_auth_type').value,
+        api_key: document.getElementById('llm_api_key').value,
+        model: document.getElementById('llm_model').value,
+        api_version: document.getElementById('llm_api_version').value,
+        max_tokens: parseInt(document.getElementById('llm_max_tokens').value) || 4096,
+        temperature: parseFloat(document.getElementById('llm_temperature').value) || 0.7,
+        timeout: parseInt(document.getElementById('llm_timeout').value) || 120,
+    };
+
+    fetch('/api/settings/test-llm', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({provider_id: pid, ...payload}),
+    }).then(function(r) { return r.json(); }).then(function(result) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-plug"></i> 测试连接';
+        if (result.success) {
+            showTestResult(true, '<i class="bi bi-check-circle"></i> 连接成功！提供商: ' + esc(result.provider) + ', 模型: ' + esc(result.model) + '<br><small>响应: ' + esc(result.response) + '</small>');
+            // 测试成功后拉取模型列表（使用当前表单配置，不依赖 DB）
+            fetch('/api/settings/test-llm-models', {
+                method: 'POST',
+                headers: {'content-type': 'application/json'},
+                body: JSON.stringify({
+                    auth_type: document.getElementById('llm_auth_type').value,
+                    api_key: document.getElementById('llm_api_key').value,
+                    api_url: document.getElementById('llm_api_url').value,
+                    timeout: parseInt(document.getElementById('llm_timeout').value) || 120,
+                }),
+            })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.models && data.models.length > 0) {
+                        renderModelDropdown(data.models, pid);
+                    }
+                });
+        } else {
+            showTestResult(false, '<i class="bi bi-exclamation-triangle"></i> 连接失败: ' + esc(result.error));
+        }
+    }).catch(function(err) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-plug"></i> 测试连接';
+        showTestResult(false, '<i class="bi bi-exclamation-triangle"></i> 请求失败: ' + esc(err.message));
+    });
+}
+
+// ── 保存提供商 ──
+
+function saveLlmSettings() {
+    var pid = selectedProviderId;
+    if (!pid) return;
+    var setActive = document.getElementById('llm_set_active').checked;
+    var apiKey = document.getElementById('llm_api_key').value;
+
+    var data = {
+        name: document.getElementById('llm_provider_name').value || '自定义',
+        api_url: document.getElementById('llm_api_url').value,
+        auth_type: document.getElementById('llm_auth_type').value,
+        model: document.getElementById('llm_model').value,
+        api_version: document.getElementById('llm_api_version').value,
+        max_tokens: parseInt(document.getElementById('llm_max_tokens').value) || 4096,
+        temperature: parseFloat(document.getElementById('llm_temperature').value) || 0.7,
+        timeout: parseInt(document.getElementById('llm_timeout').value) || 120,
+    };
+    if (apiKey) { data.api_key = apiKey; }
+
+    var btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 保存中...';
+
+    var savePromise = fetch('/api/settings/providers/' + pid, {
+        method: 'PUT',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify(data),
+    }).then(function(r) { return r.json(); });
+
+    if (setActive) {
+        savePromise = savePromise.then(function() {
+            return fetch('/api/settings/providers/' + pid + '/activate', {method: 'PUT'});
+        });
+    }
+
+    savePromise.then(function() {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-circle"></i> 保存配置';
+        showToast('success', '配置已保存' + (setActive ? '（已设为当前启用）' : ''));
+        loadSettings();  // 刷新全部配置表
+    }).catch(function() {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-circle"></i> 保存配置';
+        showToast('danger', '保存失败');
+    });
+}
+
+// ── 加载提供商列表 ──
+
+function loadProviders() {
+    fetch('/api/settings/providers').then(function(r) { return r.json(); }).then(function(data) {
+        providers = data.providers || [];
+        // 保持选中状态
+        if (!selectedProviderId || !getProviderById(selectedProviderId)) {
+            var active = null;
+            for (var i = 0; i < providers.length; i++) {
+                if (providers[i].is_active === 1 || providers[i].is_active === true || providers[i].is_active === '1') {
+                    active = providers[i].id;
+                    break;
+                }
+            }
+            selectedProviderId = active || (providers.length > 0 ? providers[0].id : null);
+        }
+        renderProviderList();
+        if (selectedProviderId) {
+            loadProviderConfig(selectedProviderId);
+        } else {
+            // 清空表单
+            ['llm_provider_name','llm_api_url','llm_api_key','llm_model','llm_api_version','llm_max_tokens','llm_temperature','llm_timeout'].forEach(function(k) {
+                var el = document.getElementById(k);
+                if (el) el.value = '';
+            });
+        }
+    });
+}
+
+// ── 初始化 ──
+
+function loadSettings() {
+    fetch('/api/settings').then(function(r) { return r.json(); }).then(function(data) {
+        var settings = data.settings || [];
+
+        // 填充全部配置表
+        var tbody = document.getElementById('settings-tbody');
+        tbody.innerHTML = '';
+        settings.forEach(function(s) {
+            var displayVal = s.value;
+            if (s.key.indexOf('key') !== -1 || s.key.indexOf('password') !== -1) {
+                displayVal = s.value ? '****' : '(空)';
+            }
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td><code>' + esc(s.key) + '</code></td>' +
+                '<td>' + esc(String(displayVal).substring(0, 60)) + '</td>' +
+                '<td><span class="badge bg-secondary">' + esc(s.value_type) + '</span></td>' +
+                '<td><span class="badge bg-info">' + esc(s.category) + '</span></td>' +
+                '<td><small class="text-muted">' + esc(s.description || '') + '</small></td>' +
+                '<td><small class="text-muted">' + formatDate(s.updated_at) + '</small></td>';
+            tbody.appendChild(tr);
+        });
+
+        // 填充分类表单（memory, auth, storage）
+        Object.keys(CATEGORY_KEYS).forEach(function(cat) {
+            CATEGORY_KEYS[cat].forEach(function(key) {
+                var el = document.getElementById(key);
+                if (!el) return;
+                var found = null;
+                for (var i = 0; i < settings.length; i++) {
+                    if (settings[i].key === key) { found = settings[i]; break; }
+                }
+                el.value = found ? found.value : '';
+            });
+        });
+
+        // 加载提供商
+        loadProviders();
+    });
+}
+
+// ── 分类配置保存 ──
+
+function saveCategory(category) {
+    var keys = CATEGORY_KEYS[category];
+    if (!keys) return;
+    var items = [];
+    keys.forEach(function(k) {
+        var el = document.getElementById(k);
+        if (!el) return;
+        items.push({key: k, value: el.value});
+    });
+    var btn = event && event.target;
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 保存中...'; }
+    fetch('/api/settings/batch', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({settings: items}),
+    }).then(function(r) { return r.json(); }).then(function() {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-circle"></i> 保存' + (category === 'memory' ? '记忆配置' : category === 'auth' ? '认证配置' : '路径配置'); }
+        showToast('success', '配置已保存');
+        loadSettings();
+    }).catch(function() {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-circle"></i> 保存配置'; }
+        showToast('danger', '保存失败');
+    });
+}
+
+// ── SMTP ──
+
+function collectSmtpSettings() {
+    var items = [];
+    SMTP_KEYS.forEach(function(k) {
+        var el = document.getElementById(k);
+        if (!el) return;
+        var val = el.value;
+        if (k === 'smtp_password' && val === '****') return;
+        items.push({key: k, value: val});
+    });
+    return items;
+}
+
+function saveSmtpSettings() {
+    var items = collectSmtpSettings();
+    var btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 保存中...';
+    fetch('/api/settings/batch', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({settings: items}),
+    }).then(function(r) { return r.json(); }).then(function() {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-circle"></i> 保存 SMTP 配置';
+        showToast('success', 'SMTP 配置已保存');
+    }).catch(function() {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-circle"></i> 保存 SMTP 配置';
+        showToast('danger', '保存失败');
+    });
+}
+
+// ── Toast ──
+
+function showToast(type, msg) {
+    var container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9999;';
+        document.body.appendChild(container);
+    }
+    var toast = document.createElement('div');
+    toast.className = 'alert alert-' + type + ' alert-dismissible fade show';
+    toast.innerHTML = msg + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+    container.appendChild(toast);
+    setTimeout(function() { toast.remove(); }, 3000);
+}
+
+document.addEventListener('DOMContentLoaded', function() { loadSettings(); });
+</script>
+{% endblock %}

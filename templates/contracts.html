@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+{% block title %}契约管理{% endblock %}
+{% block page_title %}<i class="bi bi-file-earmark-text"></i> 契约管理{% endblock %}
+
+{% block content %}
+<div class="row g-4 mb-4">
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(67,97,238,0.1);color:#4361ee;"><i class="bi bi-file-earmark-text"></i></div>
+            <div>
+                <div class="stat-badge-value">{{ contracts|length|format_number }}</div>
+                <div class="stat-badge-label">契约总数</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(16,185,129,0.1);color:#10b981;"><i class="bi bi-check-circle"></i></div>
+            <div>
+                <div class="stat-badge-value">{{ contracts|selectattr('status', 'equalto', 'approved')|list|length }}</div>
+                <div class="stat-badge-label">已批准</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(245,158,11,0.1);color:#f59e0b;"><i class="bi bi-pencil"></i></div>
+            <div>
+                <div class="stat-badge-value">{{ contracts|selectattr('status', 'equalto', 'draft')|list|length }}</div>
+                <div class="stat-badge-label">草稿</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(59,130,246,0.1);color:#3b82f6;"><i class="bi bi-tags"></i></div>
+            <div>
+                <div class="stat-badge-value">{{ contracts|map(attribute='contract_type')|unique|list|length }}</div>
+                <div class="stat-badge-label">契约类型</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h6><i class="bi bi-file-earmark-text me-2"></i>契约列表 ({{ contracts|length }} 个)</h6>
+        <div class="d-flex gap-2 align-items-center">
+            <div class="btn-group">
+                <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-download"></i> 导出</button>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="/api/export/contracts?format=csv"><i class="bi bi-filetype-csv me-2"></i>导出 CSV</a></li>
+                    <li><a class="dropdown-item" href="/api/export/contracts?format=json"><i class="bi bi-filetype-json me-2"></i>导出 JSON</a></li>
+                </ul>
+            </div>
+            <button class="btn btn-sm btn-outline-danger" id="contract-batch-delete-btn" style="display:none;" onclick="contractBatchDelete()">
+                <i class="bi bi-trash"></i> 批量删除 <span id="contract-batch-count" class="badge bg-danger">0</span>
+            </button>
+            <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-primary" onclick="filterContracts('all')">全部</button>
+                <button type="button" class="btn btn-outline-success" onclick="filterContracts('approved')">已批准</button>
+                <button type="button" class="btn btn-outline-warning" onclick="filterContracts('draft')">草稿</button>
+                <button type="button" class="btn btn-outline-info" onclick="filterContracts('reviewed')">已审核</button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="contractsTable">
+                <thead>
+                    <tr><th style="width:36px;"><input type="checkbox" id="contract-select-all" onchange="toggleContractSelectAll(this)"></th><th>ID</th><th>类型</th><th>标题</th><th>创建者</th><th>状态</th><th>版本</th><th>标签</th><th>创建时间</th><th>操作</th></tr>
+                </thead>
+                <tbody id="contractsTableBody">
+                    {% for contract in contracts %}
+                    <tr class="contract-row" data-status="{{ contract.status }}" data-id="{{ contract.contract_id }}">
+                        <td><input type="checkbox" class="contract-checkbox" value="{{ contract.contract_id }}" onchange="updateContractBatchDeleteBtn()"></td>
+                        <td><code>{{ contract.contract_id[:8] }}...</code></td>
+                        <td><span class="badge bg-{{ 'primary' if contract.contract_type == 'global' else 'success' if contract.contract_type == 'api' else 'info' if contract.contract_type == 'ui' else 'warning' if contract.contract_type == 'data' else 'secondary' }}">{{ contract.contract_type|upper }}</span></td>
+                        <td>
+                            <strong>{{ contract.content.title|default('未命名契约') }}</strong><br>
+                            <small class="text-muted">{{ contract.content.description|default('无描述')|truncate(50) }}</small>
+                        </td>
+                        <td>{{ contract.created_by }}</td>
+                        <td><span class="badge bg-{{ 'warning' if contract.status == 'draft' else 'info' if contract.status == 'reviewed' else 'success' if contract.status == 'approved' else 'secondary' }}">{{ contract.status }}</span></td>
+                        <td>{{ contract.version }}</td>
+                        <td>
+                            {% for tag in contract.tags[:3] %}
+                            <span class="badge bg-light text-dark me-1">{{ tag }}</span>
+                            {% endfor %}
+                            {% if contract.tags|length > 3 %}<span class="badge bg-secondary">+{{ contract.tags|length - 3 }}</span>{% endif %}
+                        </td>
+                        <td style="white-space:nowrap;">{{ contract.created_at|format_date }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="viewContract('{{ contract.contract_id }}')" title="查看"><i class="bi bi-eye"></i></button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteContract('{{ contract.contract_id }}')" title="删除"><i class="bi bi-trash"></i></button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="d-flex justify-content-between align-items-center px-3 py-3 border-top">
+            <div class="d-flex align-items-center gap-3">
+                <span class="text-muted small">显示 <span id="contractPageStart">0</span>-<span id="contractPageEnd">0</span>，共 <span id="contractTotal">{{ contracts|length }}</span> 个</span>
+                <span class="text-muted small" id="contract-selected-count" style="display:none;"></span>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <select class="form-select form-select-sm" style="width:auto;" id="contract-page-size" onchange="changeContractPageSize(this)">
+                    <option value="10">10条/页</option>
+                    <option value="20">20条/页</option>
+                    <option value="50">50条/页</option>
+                    <option value="100">100条/页</option>
+                </select>
+                <nav><ul class="pagination pagination-sm mb-0" id="contractsPagination"></ul></nav>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mt-2">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header"><h6>契约类型分布</h6></div>
+            <div class="card-body">
+                <div class="chart-pie"><canvas id="contractTypeChart"></canvas></div>
+                <div class="mt-3 text-center small">
+                    {% set type_counts = {} %}
+                    {% for contract in contracts %}
+                        {% set type = contract.contract_type %}
+                        {% if type not in type_counts %}{% set _ = type_counts.update({type: 0}) %}{% endif %}
+                        {% set _ = type_counts.update({type: type_counts[type] + 1}) %}
+                    {% endfor %}
+                    {% for type, count in type_counts.items() %}
+                    <span class="me-3"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{{ 'var(--primary)' if type == 'global' else 'var(--success)' if type == 'api' else 'var(--info)' if type == 'ui' else '#f59e0b' if type == 'data' else '#64748b' }};margin-right:4px;"></span>{{ type|upper }} ({{ count }})</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header"><h6>契约状态分布</h6></div>
+            <div class="card-body">
+                <div class="chart-pie"><canvas id="contractStatusChart"></canvas></div>
+                <div class="mt-3 text-center small">
+                    {% set status_counts = {} %}
+                    {% for contract in contracts %}
+                        {% set status = contract.status %}
+                        {% if status not in status_counts %}{% set _ = status_counts.update({status: 0}) %}{% endif %}
+                        {% set _ = status_counts.update({status: status_counts[status] + 1}) %}
+                    {% endfor %}
+                    {% for status, count in status_counts.items() %}
+                    <span class="me-3"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{{ '#f59e0b' if status == 'draft' else 'var(--info)' if status == 'reviewed' else 'var(--success)' if status == 'approved' else '#64748b' }};margin-right:4px;"></span>{{ status }} ({{ count }})</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mt-2">
+    <div class="col-lg-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6><i class="bi bi-diagram-3 me-2"></i>契约依赖关系图</h6>
+                <button class="btn btn-sm btn-outline-primary" onclick="loadContractGraph()"><i class="bi bi-arrow-clockwise"></i> 刷新</button>
+            </div>
+            <div class="card-body">
+                <div id="contractGraphContainer" style="height:500px;border:1px solid var(--border);border-radius:var(--radius-sm);">
+                    <div class="text-center py-5 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>加载依赖关系图...</div>
+                </div>
+                <div class="mt-2 text-center small" id="contractGraphLegend"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Contract Detail Modal -->
+<div class="modal fade" id="contractModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">契约详情</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="contractDetails"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var currentFilter = 'all';
+
+function filterContracts(status) {
+    currentFilter = status;
+    initContractPagination();
+}
+
+function viewContract(contractId) {
+    fetch('/api/contracts/' + contractId).then(function(r){return r.json()}).then(function(data) {
+        var html = '<div class="mb-3"><h6>基本信息</h6><table class="table table-sm"><tr><th>ID</th><td><code>' + esc(data.contract_id) + '</code></td></tr>' +
+            '<tr><th>类型</th><td><span class="badge bg-' + getBadge(data.contract_type) + '">' + data.contract_type.toUpperCase() + '</span></td></tr>' +
+            '<tr><th>标题</th><td>' + esc((data.content||{}).title || '未命名') + '</td></tr>' +
+            '<tr><th>状态</th><td><span class="badge bg-' + getBadge(data.status) + '">' + data.status + '</span></td></tr>' +
+            '<tr><th>版本</th><td>' + data.version + '</td></tr>' +
+            '<tr><th>创建者</th><td>' + esc(data.created_by) + '</td></tr>' +
+            '<tr><th>创建时间</th><td>' + formatDate(data.created_at) + '</td></tr>' +
+            '<tr><th>更新时间</th><td>' + formatDate(data.updated_at) + '</td></tr></table></div>' +
+            '<div class="mb-3"><h6>描述</h6><p class="text-muted">' + esc((data.content||{}).description || '无描述') + '</p></div>' +
+            '<div class="mb-3"><h6>标签</h6>' + (data.tags||[]).map(function(t){return '<span class="badge bg-light text-dark me-1">' + esc(t) + '</span>'}).join('') + '</div>' +
+            '<div class="mb-3"><h6>依赖</h6>' + ((data.dependencies||[]).length ? data.dependencies.map(function(d){return '<a href="javascript:void(0)" class="badge bg-info me-1 text-decoration-none" onclick="viewContract(\'' + d + '\')">' + d + '</a>'}).join('') : '<p class="text-muted">无依赖</p>') + '</div>' +
+            '<div class="mb-3"><h6>内容</h6><pre class="bg-light p-3 rounded" style="max-height:300px;overflow-y:auto;"><code>' + esc(JSON.stringify(data.content, null, 2)) + '</code></pre></div>';
+        document.getElementById('contractDetails').innerHTML = html;
+        cleanupModalBackdrop();
+        new bootstrap.Modal(document.getElementById('contractModal')).show();
+    }).catch(function(err){console.error(err); alert('获取契约详情失败')});
+}
+
+function getBadge(type) {
+    var map = {global:'primary',api:'success',ui:'info',data:'warning',model:'secondary',draft:'warning',reviewed:'info',approved:'success',deprecated:'secondary'};
+    return map[type] || 'secondary';
+}
+
+// Pagination
+function getContractPageSize() {
+    var sel = document.getElementById('contract-page-size');
+    return sel ? parseInt(sel.value) : 10;
+}
+
+function changeContractPageSize(sel) {
+    initContractPagination();
+}
+
+function initContractPagination() {
+    var pageSize = getContractPageSize();
+    var rows = document.querySelectorAll('#contractsTableBody .contract-row');
+    var filtered = Array.from(rows).filter(function(r){return currentFilter === 'all' || r.dataset.status === currentFilter});
+    var total = filtered.length, totalPages = Math.ceil(total / pageSize) || 1;
+    document.getElementById('contractTotal').textContent = total;
+
+    if (total === 0) {
+        rows.forEach(function(r){r.style.display='none'});
+        document.getElementById('contractPageStart').textContent = '0';
+        document.getElementById('contractPageEnd').textContent = '0';
+        renderPagination('contractsPagination', 1, 1, function(){});
+        return;
+    }
+
+    function showPage(page) {
+        var start = (page - 1) * pageSize, end = Math.min(start + pageSize, total);
+        Array.from(rows).forEach(function(r){r.style.display = 'none'});
+        filtered.forEach(function(r, i){r.style.display = (i >= start && i < end) ? '' : 'none'});
+        document.getElementById('contractPageStart').textContent = start + 1;
+        document.getElementById('contractPageEnd').textContent = end;
+        renderPagination('contractsPagination', page, totalPages, showPage);
+    }
+    showPage(1);
+}
+
+// Contract graph
+var contractNetwork = null;
+
+function loadContractGraph() {
+    var container = document.getElementById('contractGraphContainer');
+    container.innerHTML = '<div class="text-center py-5 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>加载依赖关系图...</div>';
+    if (typeof vis === 'undefined') {
+        var script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/dist/vis-network.min.js';
+        script.onload = function() {
+            if (!document.getElementById('vis-css')) {
+                var link = document.createElement('link'); link.id = 'vis-css'; link.rel = 'stylesheet';
+                link.href = 'https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/dist/dist/vis-network.min.css';
+                document.head.appendChild(link);
+            }
+            fetchGraph();
+        };
+        document.head.appendChild(script);
+    } else { fetchGraph(); }
+}
+
+function fetchGraph() {
+    fetch('/api/contract-graph').then(function(r){return r.json()}).then(function(data) {
+        if (data.error || !data.nodes || data.nodes.length === 0) {
+            document.getElementById('contractGraphContainer').innerHTML = '<div class="text-center py-5 text-muted"><i class="bi bi-info-circle me-2"></i>暂无契约依赖关系数据</div>';
+            return;
+        }
+        renderGraph(data);
+    }).catch(function(e) {
+        document.getElementById('contractGraphContainer').innerHTML = '<div class="text-center py-5 text-danger"><i class="bi bi-exclamation-triangle me-2"></i>加载失败</div>';
+    });
+}
+
+function renderGraph(data) {
+    var groupColors = {global:{background:'#4e73df',border:'#2e59d9'},api:{background:'#1cc88a',border:'#17a673'},ui:{background:'#36b9cc',border:'#2c9faf'},data:{background:'#f6c23e',border:'#dda20a'},model:{background:'#858796',border:'#6c757d'}};
+    var statusColors = {approved:'#1cc88a',draft:'#f6c23e',reviewed:'#36b9cc',deprecated:'#858796'};
+    var nodes = new vis.DataSet(data.nodes.map(function(n){return {
+        id: n.id, label: n.label, title: n.title,
+        color: {background:(groupColors[n.group]||{background:'#858796'}).background,border:(groupColors[n.group]||{border:'#6c757d'}).border,highlight:{background:'#fff',border:statusColors[n.status]||'#4e73df'}},
+        borderWidth: 2, borderWidthSelected: 3, shape: 'box', font: {size:12,color:'#fff'}, margin: {top:6,bottom:6,left:8,right:8}
+    }}));
+    var edges = new vis.DataSet(data.edges.map(function(e){return {from:e.from,to:e.to,arrows:{to:{enabled:true,scaleFactor:0.8}},color:{color:'#a0aec0',highlight:'#4e73df'},smooth:{type:'curvedCW',roundness:0.2}}}));
+    contractNetwork = new vis.Network(document.getElementById('contractGraphContainer'), {nodes: nodes, edges: edges}, {
+        physics: {solver:'forceAtlas2Based',forceAtlas2Based:{gravitationalConstant:-60,centralGravity:0.01,springLength:200,springConstant:0.04,damping:0.5},stabilization:{iterations:200}},
+        layout: {improvedLayout:true}, interaction: {hover:true,tooltipDelay:200,navigationButtons:true,keyboard:true}
+    });
+    var legend = document.getElementById('contractGraphLegend');
+    legend.innerHTML = Object.entries(data.legend||{}).map(function(kv){var c=groupColors[kv[0]];return '<span class="me-3"><span style="display:inline-block;width:12px;height:12px;background:'+(c?c.background:'#858796')+';border-radius:2px;margin-right:4px;vertical-align:middle"></span>'+kv[1].label+'</span>';}).join('');
+    contractNetwork.on('click', function(params){if(params.nodes.length>0) viewContract(params.nodes[0]);});
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Type chart
+    var typeCtx = document.getElementById('contractTypeChart').getContext('2d');
+    var typeCounts = {}, statusCounts = {};
+    {% for contract in contracts %}
+        typeCounts['{{ contract.contract_type }}'] = (typeCounts['{{ contract.contract_type }}'] || 0) + 1;
+        statusCounts['{{ contract.status }}'] = (statusCounts['{{ contract.status }}'] || 0) + 1;
+    {% endfor %}
+    new Chart(typeCtx, {
+        type: 'doughnut',
+        data: { labels: Object.keys(typeCounts).map(function(k){return k.toUpperCase()}), datasets: [{data:Object.values(typeCounts), backgroundColor:['#4e73df','#1cc88a','#36b9cc','#f6c23e','#858796'], hoverBorderColor:'rgba(234,236,244,1)'}] },
+        options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '70%' }
+    });
+    new Chart(document.getElementById('contractStatusChart'), {
+        type: 'doughnut',
+        data: { labels: Object.keys(statusCounts), datasets: [{data:Object.values(statusCounts), backgroundColor:['#f6c23e','#36b9cc','#1cc88a','#858796'], hoverBorderColor:'rgba(234,236,244,1)'}] },
+        options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '70%' }
+    });
+    loadContractGraph();
+    initContractPagination();
+});
+
+// ── Single Delete ──
+
+function deleteContract(contractId) {
+    if (!confirm('确定删除此契约？')) return;
+    fetch('/api/contracts/' + contractId, { method: 'DELETE' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.success) window.location.reload();
+            else alert('删除失败: ' + (d.error || '未知错误'));
+        })
+        .catch(function(err) { alert('删除失败: ' + err.message); });
+}
+
+// ── Batch Delete ──
+
+function toggleContractSelectAll(master) {
+    document.querySelectorAll('.contract-checkbox').forEach(function(cb) { cb.checked = master.checked; });
+    updateContractBatchDeleteBtn();
+}
+
+function updateContractBatchDeleteBtn() {
+    var checked = document.querySelectorAll('.contract-checkbox:checked');
+    var btn = document.getElementById('contract-batch-delete-btn');
+    var count = document.getElementById('contract-batch-count');
+    var seltxt = document.getElementById('contract-selected-count');
+    if (checked.length > 0) {
+        btn.style.display = 'inline-block';
+        if (count) count.textContent = checked.length;
+        if (seltxt) { seltxt.style.display = 'inline'; seltxt.textContent = '已选 ' + checked.length + ' 条'; }
+    } else {
+        btn.style.display = 'none';
+        if (seltxt) seltxt.style.display = 'none';
+    }
+}
+
+function contractBatchDelete() {
+    var checked = document.querySelectorAll('.contract-checkbox:checked');
+    if (!checked.length) return;
+    if (!confirm('确定删除选中的 ' + checked.length + ' 个契约？')) return;
+    var ids = [];
+    checked.forEach(function(cb) { ids.push(cb.value); });
+    fetch('/api/contracts/batch-delete', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({contract_ids: ids}),
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.success) {
+            window.location.reload();
+        } else {
+            alert('删除失败: ' + (d.error || '未知错误'));
+        }
+    }).catch(function(err) { alert('删除失败: ' + err.message); });
+}
+
+window.filterContracts = filterContracts;
+window.viewContract = viewContract;
+window.deleteContract = deleteContract;
+window.initContractPagination = initContractPagination;
+window.changeContractPageSize = changeContractPageSize;
+</script>
+{% endblock %}

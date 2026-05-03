@@ -1,0 +1,1233 @@
+{% extends "base.html" %}
+{% block title %}知识库管理{% endblock %}
+{% block page_title %}<i class="bi bi-book"></i> 知识库管理{% endblock %}
+
+{% block extra_css %}
+<style>
+    #kb-list input[type=checkbox],
+    #kb-select-all,
+    #kb-detail-panel input[type=checkbox],
+    #doc-select-all {
+        accent-color: #4361ee;
+        width: 16px;
+        height: 16px;
+    }
+/* ── Dark Mode ── */
+body.dark-mode .kb-card { background: var(--surface); }
+body.dark-mode .kb-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+body.dark-mode .kb-doc-item { border-bottom-color: var(--border); }
+body.dark-mode .kb-doc-item:hover { background: rgba(255,255,255,0.04); }
+body.dark-mode .search-highlight { background: rgba(245,158,11,0.2); }</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ===== Stats Cards ===== -->
+<div class="row g-4 mb-4">
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(67,97,238,0.1);color:#4361ee;"><i
+                    class="bi bi-book"></i></div>
+            <div>
+                <div class="stat-badge-value" id="stat-kb-count">0</div>
+                <div class="stat-badge-label">知识库</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(16,185,129,0.1);color:#10b981;"><i
+                    class="bi bi-file-earmark"></i></div>
+            <div>
+                <div class="stat-badge-value" id="stat-doc-count">0</div>
+                <div class="stat-badge-label">文档</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(245,158,11,0.1);color:#f59e0b;"><i
+                    class="bi bi-grid-3x3"></i></div>
+            <div>
+                <div class="stat-badge-value" id="stat-chunk-count">0</div>
+                <div class="stat-badge-label">分块</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge" style="cursor:pointer;" onclick="showModelModal()" title="点击管理 Embedding 模型">
+            <div class="stat-badge-icon" style="background:rgba(59,130,246,0.1);color:#3b82f6;"><i
+                    class="bi bi-robot"></i></div>
+            <div>
+                <div class="stat-badge-value" id="stat-embedding-status">检查中...</div>
+                <div class="stat-badge-label">Embedding 模型</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Tabs ===== -->
+<ul class="nav nav-tabs mb-4" id="kbTabs">
+    <li class="nav-item">
+        <a class="nav-link active" data-tab="manage" href="#"><i class="bi bi-diagram-2 me-1"></i>知识库管理</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-tab="search" href="#"><i class="bi bi-search me-1"></i>检索测试</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-tab="stats" href="#"><i class="bi bi-bar-chart me-1"></i>统计分析</a>
+    </li>
+</ul>
+
+<!-- ============================================================ -->
+<!-- Tab 1: Knowledge Base Management                             -->
+<!-- ============================================================ -->
+<div class="tab-content" data-tab="manage">
+    <div class="row g-4">
+        <!-- KB List -->
+        <div class="col-lg-5">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h6><i class="bi bi-book me-2"></i>知识库列表</h6>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-danger" id="kb-batch-delete-btn"
+                                onclick="batchDeleteKBs()" disabled><i class="bi bi-trash"></i> 批量删除
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="loadKBs()"><i
+                                class="bi bi-arrow-clockwise"></i></button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="p-3 border-bottom bg-light">
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" id="kb-create-name" placeholder="知识库名称">
+                            <input type="text" class="form-control" id="kb-create-desc" placeholder="描述（可选）">
+                            <button class="btn btn-outline-secondary" id="kb-rename-cancel-btn" style="display:none;" onclick="cancelRenameKB()"><i class="bi bi-x-lg"></i></button>
+                            <button class="btn btn-primary" id="kb-create-btn" onclick="createKB()"><i class="bi bi-plus-lg"></i> 创建
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead>
+                            <tr>
+                                <th style="width:40px;"><input type="checkbox" id="kb-select-all"
+                                                               onchange="toggleKBSelectAll(this)"></th>
+                                <th>名称</th>
+                                <th style="width:60px;">文档</th>
+                                <th style="width:60px;">分块</th>
+                                <th style="width:40px;"></th>
+                            </tr>
+                            </thead>
+                            <tbody id="kb-list">
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4"><i class="bi bi-inbox"></i><br>加载中...
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center p-2 border-top">
+                        <div class="d-flex align-items-center gap-1">
+                            <small class="text-muted">每页</small>
+                            <select class="form-select form-select-sm" id="kb-page-size" onchange="loadKBs(1)"
+                                    style="width:72px;">
+                                <option value="10">10</option>
+                                <option value="20" selected>20</option>
+                                <option value="50">50</option>
+                            </select>
+                        </div>
+                        <nav>
+                            <ul class="pagination pagination-sm mb-0" id="kb-pagination"></ul>
+                        </nav>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- KB Detail -->
+        <div class="col-lg-7">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h6><i class="bi bi-info-circle me-2"></i><span id="detail-title">选择一个知识库</span></h6>
+                </div>
+                <div class="card-body" id="kb-detail-panel">
+                    <div class="text-center text-muted py-5">
+                        <i class="bi bi-hand-index-thumb" style="font-size:2rem;"></i>
+                        <p class="mt-2">从左侧选择一个知识库查看详情</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Tab 2: Search Test                                          -->
+<!-- ============================================================ -->
+<div class="tab-content" data-tab="search" style="display:none;">
+    <div class="card">
+        <div class="card-header">
+            <h6><i class="bi bi-search me-2"></i>知识库检索测试</h6>
+        </div>
+        <div class="card-body">
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <label class="form-label fw-600">选择知识库</label>
+                    <select class="form-select" id="search-kb-select">
+                        <option value="">-- 全部知识库 --</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-600">查询文本</label>
+                    <input type="text" class="form-control" id="search-query" placeholder="输入检索关键词..."
+                           onkeydown="if(event.key==='Enter')doSearch()">
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label fw-600">Top-K</label>
+                    <input type="number" class="form-control" id="search-topk" value="5" min="1" max="20">
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label fw-600">模式</label>
+                    <select class="form-select" id="search-mode">
+                        <option value="vector">向量</option>
+                        <option value="fts">全文</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" onclick="doSearch()"><i class="bi bi-search"></i></button>
+                </div>
+            </div>
+
+            <div id="search-results">
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-search" style="font-size:2rem;"></i>
+                    <p class="mt-2">输入查询文本并搜索</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Tab 3: Statistics                                           -->
+<!-- ============================================================ -->
+<div class="tab-content" data-tab="stats" style="display:none;">
+    <div class="row g-4">
+        <div class="col-lg-5">
+            <div class="card">
+                <div class="card-header">
+                    <h6><i class="bi bi-pie-chart me-2"></i>知识库概览</h6>
+                </div>
+                <div class="card-body">
+                    <select class="form-select mb-3" id="stats-kb-select">
+                        <option value="">-- 选择知识库 --</option>
+                    </select>
+                    <div class="row g-3 text-center" id="stats-numbers">
+                        <div class="col-6">
+                            <div class="p-3 bg-light rounded">
+                                <div class="fs-4 fw-bold text-primary" id="stats-doc-count">0</div>
+                                <small class="text-muted">文档数</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="p-3 bg-light rounded">
+                                <div class="fs-4 fw-bold text-warning" id="stats-chunk-count">0</div>
+                                <small class="text-muted">分块数</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="p-3 bg-light rounded">
+                                <div class="fs-4 fw-bold text-info" id="stats-avg-chunk">0</div>
+                                <small class="text-muted">平均分块/文档</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="p-3 bg-light rounded">
+                                <div class="fs-4 fw-bold text-success" id="stats-dim">384</div>
+                                <small class="text-muted">向量维度</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-7">
+            <div class="card">
+                <div class="card-header">
+                    <h6><i class="bi bi-bar-chart me-2"></i>分块数量分布</h6>
+                </div>
+                <div class="card-body">
+                    <div class="chart-area">
+                        <canvas id="chunkDistChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Model Management Modal ===== -->
+<div class="modal fade" id="modelModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-robot me-2"></i>Embedding 模型管理</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-600">模型信息</label>
+                    <div class="bg-light rounded p-3">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">模型</span>
+                            <span id="model-name" class="fw-600">BAAI/bge-small-zh-v1.5</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">向量维度</span>
+                            <span id="model-dim" class="fw-600">384</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">状态</span>
+                            <span id="model-status-badge"><span class="badge bg-secondary">检查中...</span></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-600">操作</label>
+                    <div class="d-grid gap-2">
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-primary flex-fill" id="btn-download-model" onclick="downloadModel()">
+                                <i class="bi bi-cloud-download me-1"></i>下载模型
+                            </button>
+                            <button class="btn btn-outline-primary flex-fill" id="btn-reload-model"
+                                    onclick="reloadModel()">
+                                <i class="bi bi-arrow-repeat me-1"></i>重新加载模型
+                            </button>
+                        </div>
+                        <button class="btn btn-warning" id="btn-rebuild-indexes" onclick="rebuildIndexes()">
+                            <i class="bi bi-arrow-repeat me-1"></i>重建所有向量索引
+                        </button>
+                    </div>
+                    <div class="mt-2 text-muted small">
+                        <i class="bi bi-info-circle"></i>
+                        下载模型后，需重建索引以使新向量对已有文档生效。
+                    </div>
+                </div>
+                <div id="model-action-status" style="display:none;">
+                    <div class="alert d-flex align-items-center" role="alert">
+                        <div class="spinner-border spinner-border-sm me-2" id="model-spinner"></div>
+                        <span id="model-status-text">处理中...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Document Detail Modal ===== -->
+<div class="modal fade" id="docDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-file-earmark-text me-2"></i><span id="doc-detail-title">文档详情</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 文档元信息 -->
+                <div class="row g-2 mb-3" id="doc-detail-meta">
+                    <div class="col-md-4"><small class="text-muted">类型</small><br><span id="dd-file-type" class="badge bg-secondary">-</span></div>
+                    <div class="col-md-4"><small class="text-muted">字符数</small><br><span id="dd-char-count">-</span></div>
+                    <div class="col-md-4"><small class="text-muted">分块数</small><br><span id="dd-chunk-count">-</span></div>
+                </div>
+                <!-- 全文内容 -->
+                <h6 class="mb-2"><i class="bi bi-text-paragraph me-1"></i>全文内容</h6>
+                <div class="bg-light rounded p-3 mb-3" style="max-height:400px;overflow-y:auto;white-space:pre-wrap;font-size:0.88rem;font-family:var(--bs-font-monospace);" id="doc-detail-content">
+                    <span class="text-muted">加载中...</span>
+                </div>
+                <!-- 分块列表 -->
+                <h6 class="mb-2"><i class="bi bi-grid-3x3 me-1"></i>分块列表 <small class="text-muted" id="dd-chunk-hint"></small></h6>
+                <div id="doc-detail-chunks" style="max-height:300px;overflow-y:auto;">
+                    <span class="text-muted">加载中...</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let selectedKB = null;
+    let kbPage = 1, kbPageSize = 20, kbTotal = 0;
+    let docPage = 1, docPageSize = 20, docTotal = 0;
+    let _renameKBData = null;  // {old_name, description} 或 null
+
+    // ── Tab switching ──────────────────────────────────────────────
+    document.querySelectorAll('[data-tab]').forEach(function (el) {
+        el.addEventListener('click', function (e) {
+            // 如果调 e.preventDefault() 会导致页面中的复选框无法被点击，原因未明，暂不启用
+            // e.preventDefault();
+            const tab = this.getAttribute('data-tab');
+            document.querySelectorAll('.nav-tabs .nav-link').forEach(function (t) {
+                t.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-content').forEach(function (t) {
+                t.style.display = 'none';
+            });
+            document.querySelector('.nav-tabs .nav-link[data-tab="' + tab + '"]').classList.add('active');
+            document.querySelector('.tab-content[data-tab="' + tab + '"]').style.display = '';
+            if (tab === 'search') populateSearchKBSelect();
+            if (tab === 'stats') populateStatsKBSelect();
+        });
+    });
+
+    // ── API helpers ────────────────────────────────────────────────
+    async function api(url, opts) {
+        const resp = await fetch(url, opts || {});
+        if (!resp.ok) {
+            const err = await resp.json().catch(function () {
+                return {error: resp.statusText};
+            });
+            throw new Error(err.error || resp.statusText);
+        }
+        return resp.json();
+    }
+
+    // ── KB pagination state ────────────────────────────────────────
+    function getKBPageSize() {
+        var sel = document.getElementById('kb-page-size');
+        return sel ? parseInt(sel.value) || 20 : 20;
+    }
+
+    function getDocPageSize() {
+        var sel = document.getElementById('doc-page-size');
+        return sel ? parseInt(sel.value) || 20 : 20;
+    }
+
+    // ── Load KB list ───────────────────────────────────────────────
+    async function loadKBs(page) {
+        if (page != null) kbPage = page;
+        kbPageSize = getKBPageSize();
+        var listEl = document.getElementById('kb-list');
+        listEl.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4"><i class="bi bi-arrow-repeat spin"></i><br>加载中...</td></tr>';
+        try {
+            var data = await api('/api/knowledge-bases?page=' + kbPage + '&page_size=' + kbPageSize);
+            renderKBList(data.items || [], data.total || 0);
+            updateStatsFromPaginated(data);
+        } catch (e) {
+            listEl.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4"><i class="bi bi-exclamation-circle"></i><br>' + esc(e.message) + '</td></tr>';
+        }
+    }
+
+    function updateStatsFromPaginated(data) {
+        document.getElementById('stat-kb-count').textContent = data.total || 0;
+        document.getElementById('stat-doc-count').textContent = data.total_documents || 0;
+        document.getElementById('stat-chunk-count').textContent = data.total_chunks || 0;
+    }
+
+    function renderKBList(items, total) {
+        kbTotal = total;
+        var listEl = document.getElementById('kb-list');
+        if (!items.length) {
+            listEl.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4"><i class="bi bi-inbox"></i><br>暂无知识库<br><small>在上方创建</small></td></tr>';
+            renderPagination('kb-pagination', kbPage, 1, loadKBs);
+            updateKBBatchDeleteBtn();
+            return;
+        }
+        listEl.innerHTML = items.map(function (kb) {
+            var active = selectedKB === kb.kb_name ? 'table-active' : '';
+            return '<tr class="' + active + '" onclick="handleKBRowClick(this,event)" style="cursor:pointer;">' +
+                '<td onclick="event.stopPropagation();"><label style="display:block;cursor:pointer;min-height:20px;"><input type="checkbox" value="' + esc(kb.kb_name) + '" onchange="updateKBBatchDeleteBtn()"></label></td>' +
+                '<td><span>' + esc(kb.kb_name) + '</span>' +
+                (kb.description ? '<br><small class="text-muted">' + esc(kb.description) + '</small>' : '') + '</td>' +
+                '<td><span class="badge bg-info">' + (kb.document_count || 0) + '</span></td>' +
+                '<td><span class="badge bg-warning text-dark">' + (kb.chunk_count || 0) + '</span></td>' +
+                '<td onclick="event.stopPropagation();" class="text-nowrap">' +
+                '<button class="btn btn-sm btn-outline-secondary py-0 px-1 me-1" onclick="renameKB(\'' + esc(kb.kb_name) + '\',\'' + esc(kb.description || '') + '\')" title="重命名"><i class="bi bi-pencil"></i></button>' +
+                '<button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="deleteKB(\'' + esc(kb.kb_name) + '\')" title="删除"><i class="bi bi-trash"></i></button></td>' +
+                '</tr>';
+        }).join('');
+        updateKBBatchDeleteBtn();
+        var totalPages = Math.ceil(kbTotal / kbPageSize) || 1;
+        renderPagination('kb-pagination', kbPage, totalPages, loadKBs);
+    }
+
+    // ── KB 行点击 → 导航到详情（只处理导航，不管复选框） ──
+    function handleKBRowClick(tr, e) {
+        if (e.target.type === 'checkbox') return;
+        if (e.target.closest('td:last-child')) return;  // 操作列
+        var cb = tr.querySelector('input[type=checkbox]');
+        if (cb) selectKB(cb.value);
+    }
+
+    // ── KB 全选 ──
+    function toggleKBSelectAll(el) {
+        document.querySelectorAll('#kb-list input[type=checkbox]').forEach(function (c) {
+            c.checked = el.checked;
+        });
+        updateKBBatchDeleteBtn();
+    }
+
+    // ── Doc 全选 ──
+    function toggleDocSelectAll(el) {
+        document.querySelectorAll('#kb-detail-panel tbody input[type=checkbox]').forEach(function (c) {
+            c.checked = el.checked;
+        });
+        updateDocBatchDeleteBtn();
+    }
+
+    // ── KB / Doc checkbox change 委托（冗余兜底，内联 onchange 主要负责） ──
+    document.addEventListener('change', function (e) {
+        var t = e.target;
+        if (t.tagName !== 'INPUT' || t.type !== 'checkbox') return;
+        if (t.closest('#kb-list')) {
+            updateKBBatchDeleteBtn();
+            return;
+        }
+        if (t.closest('#kb-detail-panel')) {
+            updateDocBatchDeleteBtn();
+            return;
+        }
+    });
+
+    // ── KB batch delete ──────────────────────────────────────────────
+    function updateKBBatchDeleteBtn() {
+        try {
+            var all = document.querySelectorAll('#kb-list input[type=checkbox]');
+            var checked = document.querySelectorAll('#kb-list input[type=checkbox]:checked');
+            var btn = document.getElementById('kb-batch-delete-btn');
+            if (btn) btn.disabled = checked.length === 0;
+            var selectAll = document.getElementById('kb-select-all');
+            if (selectAll) selectAll.checked = all.length > 0 && checked.length === all.length;
+        } catch (e) {
+            console.error('updateKBBatchDeleteBtn error:', e);
+        }
+    }
+
+    function getSelectedKBNames() {
+        var checks = document.querySelectorAll('#kb-list input[type=checkbox]:checked');
+        return Array.from(checks).map(function (c) {
+            return c.value;
+        });
+    }
+
+    async function batchDeleteKBs() {
+        var names = getSelectedKBNames();
+        if (!names.length) return;
+        if (!confirm('确定删除选中的 ' + names.length + ' 个知识库？此操作将删除所有文档和向量数据，不可恢复！')) return;
+        try {
+            await api('/api/knowledge-bases/batch-delete', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({names: names}),
+            });
+            if (names.indexOf(selectedKB) !== -1) {
+                selectedKB = null;
+                clearKbDetail();
+            }
+            document.getElementById('kb-select-all').checked = false;
+            loadKBs(1);
+        } catch (e) {
+            alert('批量删除失败: ' + e.message);
+        }
+    }
+
+    // ── Select KB ──────────────────────────────────────────────────
+    async function selectKB(name, page) {
+        selectedKB = name;
+        docPage = page != null ? page : 1;
+        docPageSize = getDocPageSize();
+        // 仅更新行高亮，避免全量刷新导致复选框状态丢失
+        document.querySelectorAll('#kb-list tr').forEach(function (tr) {
+            tr.classList.remove('table-active');
+        });
+        var cbs = document.querySelectorAll('#kb-list');
+        for (var i = 0; i < cbs.length; i++) {
+            if (cbs[i].value === name) {
+                cbs[i].closest('tr').classList.add('table-active');
+                break;
+            }
+        }
+        try {
+            var detail = await api('/api/knowledge-bases/' + encodeURIComponent(name) + '?page=' + docPage + '&page_size=' + docPageSize);
+            renderKbDetail(detail);
+        } catch (e) {
+            document.getElementById('kb-detail-panel').innerHTML = '<div class="text-danger">' + esc(e.message) + '</div>';
+        }
+    }
+
+    function renderKbDetail(kb) {
+        document.getElementById('detail-title').textContent = kb.kb_name;
+
+        var docsData = kb.documents || [];
+        var docs = Array.isArray(docsData) ? docsData : (docsData.items || []);
+        docTotal = Array.isArray(docsData) ? docs.length : (docsData.total || docs.length);
+
+        var docRows = docs.length ? docs.map(function (d) {
+            return '<tr>' +
+                '<td><label style="display:block;cursor:pointer;min-height:20px;"><input type="checkbox" value="' + esc(d.doc_id) + '" onchange="updateDocBatchDeleteBtn()"></label></td>' +
+                '<td><small>' + esc(d.filename) + '</small></td>' +
+                '<td><span class="badge bg-secondary">' + esc(d.file_type) + '</span></td>' +
+                '<td>' + formatNumber(d.char_count || 0) + '</td>' +
+                '<td>' + (d.chunk_count || 0) + '</td>' +
+                '<td>' + formatDate(d.created_at) + '</td>' +
+                '<td><button class="btn btn-sm btn-outline-info py-0 px-1 me-1" onclick="showDocDetail(\'' + esc(kb.kb_name) + '\',\'' + esc(d.doc_id) + '\',event)" title="查看详情"><i class="bi bi-eye"></i></button>' +
+                '<button class="btn btn-sm btn-outline-secondary py-0 px-1 me-1" onclick="renameDoc(\'' + esc(kb.kb_name) + '\',\'' + esc(d.doc_id) + '\',\'' + esc(d.filename) + '\',event)" title="重命名"><i class="bi bi-pencil"></i></button>' +
+                '<button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="deleteDoc(\'' + esc(kb.kb_name) + '\',\'' + esc(d.doc_id) + '\')"><i class="bi bi-trash"></i></button></td>' +
+                '</tr>';
+        }).join('') : '<tr><td colspan="7" class="text-center text-muted py-3">暂无文档</td></tr>';
+
+        var panel = document.getElementById('kb-detail-panel');
+        panel.innerHTML =
+            '<div class="mb-3">' +
+            '<p class="mb-1"><strong>描述：</strong>' + esc(kb.description || '-') + '</p>' +
+            '<p class="mb-0 text-muted small">创建于 ' + formatDate(kb.created_at) + ' | 更新于 ' + formatDate(kb.updated_at) + '</p>' +
+            '</div>' +
+
+            // Upload area
+            '<div class="mb-3 p-3 border rounded bg-light" id="upload-area" style="border:2px dashed #cbd5e1 !important;cursor:pointer;">' +
+            '<div class="text-center text-muted py-2" id="upload-text">' +
+            '<i class="bi bi-cloud-upload" style="font-size:1.5rem;"></i><br>' +
+            '<span>拖拽文件到此处或 <u style="color:var(--primary);">点击选择文件</u></span><br>' +
+            '<small>支持 .txt .md .pdf</small></div>' +
+            '<div id="upload-progress" style="display:none;" class="text-center py-2">' +
+            '<div class="spinner-border spinner-border-sm text-primary"></div> 上传处理中...</div>' +
+            '<input type="file" id="file-input" accept=".txt,.md,.pdf" style="display:none;" multiple>' +
+            '</div>' +
+
+            // Doc pagination bar
+            '<div class="d-flex justify-content-between align-items-center mb-2">' +
+            '<button class="btn btn-sm btn-outline-danger" id="doc-batch-delete-btn" onclick="batchDeleteDocs()" disabled><i class="bi bi-trash"></i> 批量删除</button>' +
+            '<div class="d-flex align-items-center gap-1">' +
+            '<small class="text-muted">每页</small>' +
+            '<select class="form-select form-select-sm" id="doc-page-size" onchange="selectKB(\'' + esc(kb.kb_name) + '\', 1)" style="width:72px;">' +
+            '<option value="10">10</option><option value="20" selected>20</option><option value="50">50</option>' +
+            '</select></div>' +
+            '</div>' +
+
+            // Document table
+            '<div class="table-responsive">' +
+            '<table class="table table-hover table-sm mb-0"><thead><tr>' +
+            '<th style="width:40px;"><input type="checkbox" id="doc-select-all" onchange="toggleDocSelectAll(this)"></th>' +
+            '<th>文件名</th><th>类型</th><th>字符数</th><th>分块数</th><th>上传时间</th><th>操作</th>' +
+            '</tr></thead><tbody>' + docRows + '</tbody></table></div>' +
+
+            // Doc pagination
+            '<nav class="d-flex justify-content-end mt-2"><ul class="pagination pagination-sm mb-0" id="doc-pagination"></ul></nav>';
+
+        // Wire upload area
+        var uploadArea = document.getElementById('upload-area');
+        var fileInput = document.getElementById('file-input');
+
+        uploadArea.addEventListener('click', function () {
+            fileInput.click();
+        });
+        uploadArea.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            this.style.borderColor = '#4361ee !important';
+        });
+        uploadArea.addEventListener('dragleave', function () {
+            this.style.borderColor = '#cbd5e1 !important';
+        });
+        uploadArea.addEventListener('drop', function (e) {
+            e.preventDefault();
+            this.style.borderColor = '#cbd5e1 !important';
+            if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', function () {
+            if (this.files.length) uploadFiles(this.files);
+        });
+
+        // Render doc pagination
+        var docTotalPages = Math.ceil(docTotal / docPageSize) || 1;
+        renderPagination('doc-pagination', docPage, docTotalPages, function (pg) {
+            selectKB(kb.kb_name, pg);
+        });
+
+        // Set doc page size dropdown
+        var dps = document.getElementById('doc-page-size');
+        if (dps) dps.value = String(docPageSize);
+    }
+
+    // ── Doc batch delete ──────────────────────────────────────────────
+    function updateDocBatchDeleteBtn() {
+        try {
+            var all = document.querySelectorAll('#kb-detail-panel tbody input[type=checkbox]');
+            var checked = document.querySelectorAll('#kb-detail-panel tbody input[type=checkbox]:checked');
+            var btn = document.getElementById('doc-batch-delete-btn');
+            if (btn) btn.disabled = checked.length === 0;
+            var selectAll = document.getElementById('doc-select-all');
+            if (selectAll) selectAll.checked = all.length > 0 && checked.length === all.length;
+        } catch (e) {
+            console.error('updateDocBatchDeleteBtn error:', e);
+        }
+    }
+
+    async function batchDeleteDocs() {
+        var checks = document.querySelectorAll('#kb-detail-panel tbody input[type=checkbox]:checked');
+        var docIds = Array.from(checks).map(function (c) {
+            return c.value;
+        });
+        if (!docIds.length || !selectedKB) return;
+        if (!confirm('确定删除选中的 ' + docIds.length + ' 个文档？')) return;
+        try {
+            await api('/api/knowledge-bases/' + encodeURIComponent(selectedKB) + '/documents/batch-delete', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({doc_ids: docIds}),
+            });
+            selectKB(selectedKB, docPage);
+        } catch (e) {
+            alert('批量删除失败: ' + e.message);
+        }
+    }
+
+    // ── File upload ────────────────────────────────────────────────
+    async function uploadFiles(files) {
+        var progress = document.getElementById('upload-progress');
+        var text = document.getElementById('upload-text');
+        text.style.display = 'none';
+        progress.style.display = '';
+
+        var errors = [];
+        for (var i = 0; i < files.length; i++) {
+            var file = files[i];
+            var formData = new FormData();
+            formData.append('file', file);
+            try {
+                var result = await fetch('/api/knowledge-bases/' + encodeURIComponent(selectedKB) + '/upload', {
+                    method: 'POST',
+                    body: formData,
+                });
+                if (!result.ok) {
+                    var err = await result.json().catch(function () {
+                        return {error: result.statusText};
+                    });
+                    errors.push(file.name + ': ' + (err.error || err.detail || result.statusText));
+                }
+            } catch (e) {
+                errors.push(file.name + ': ' + e.message);
+            }
+        }
+        progress.style.display = 'none';
+        text.style.display = '';
+        selectKB(selectedKB);
+        if (errors.length) {
+            alert('上传失败:\n' + errors.join('\n'));
+        }
+    }
+
+    // ── Delete document ────────────────────────────────────────────
+    async function deleteDoc(kbName, docId) {
+        if (!confirm('确定删除此文档？')) return;
+        try {
+            await api('/api/knowledge-bases/' + encodeURIComponent(kbName) + '/documents/' + encodeURIComponent(docId), {method: 'DELETE'});
+            selectKB(kbName, docPage);
+        } catch (e) {
+            alert('删除失败: ' + e.message);
+        }
+    }
+
+    // ── Create KB ──────────────────────────────────────────────────
+    async function createKB() {
+        var name = document.getElementById('kb-create-name').value.trim();
+        if (!name) {
+            alert('请输入知识库名称');
+            return;
+        }
+        var desc = document.getElementById('kb-create-desc').value.trim();
+        try {
+            await api('/api/knowledge-bases', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({kb_name: name, description: desc}),
+            });
+            document.getElementById('kb-create-name').value = '';
+            document.getElementById('kb-create-desc').value = '';
+            loadKBs(1);
+        } catch (e) {
+            alert('创建失败: ' + e.message);
+        }
+    }
+
+    // ── Delete KB ──────────────────────────────────────────────────
+    function clearKbDetail() {
+        document.getElementById('detail-title').textContent = '选择一个知识库';
+        document.getElementById('kb-detail-panel').innerHTML =
+            '<div class="text-center text-muted py-5">' +
+            '<i class="bi bi-hand-index-thumb" style="font-size:2rem;"></i>' +
+            '<p class="mt-2">从左侧选择一个知识库查看详情</p></div>';
+    }
+
+    async function deleteKB(name) {
+        if (!confirm('确定删除知识库 "' + name + '"？此操作将删除所有文档和向量数据，不可恢复！')) return;
+        try {
+            await api('/api/knowledge-bases/' + encodeURIComponent(name), {method: 'DELETE'});
+            if (selectedKB === name) {
+                selectedKB = null;
+                clearKbDetail();
+            }
+            loadKBs(kbPage);
+        } catch (e) {
+            alert('删除失败: ' + e.message);
+        }
+    }
+
+    // ── Search ─────────────────────────────────────────────────────
+    async function populateSearchKBSelect() {
+        try {
+            var kbs = await api('/api/knowledge-bases');
+            var sel = document.getElementById('search-kb-select');
+            var prev = sel.value;
+            sel.innerHTML = '<option value="">-- 全部知识库 --</option>' + kbs.map(function (kb) {
+                return '<option value="' + esc(kb.kb_name) + '">' + esc(kb.kb_name) + '</option>';
+            }).join('');
+            sel.value = prev;
+        } catch (e) {
+        }
+    }
+
+    async function doSearch() {
+        var kbName = document.getElementById('search-kb-select').value;
+        var query = document.getElementById('search-query').value.trim();
+        var topK = parseInt(document.getElementById('search-topk').value) || 5;
+        var mode = document.getElementById('search-mode').value;
+        if (!query) {
+            alert('请输入查询文本');
+            return;
+        }
+
+        var resultsEl = document.getElementById('search-results');
+        resultsEl.innerHTML = '<div class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div> 搜索中...</div>';
+
+        try {
+            var results;
+            if (kbName) {
+                results = await api('/api/knowledge-bases/' + encodeURIComponent(kbName) + '/search?q=' + encodeURIComponent(query) + '&top_k=' + topK + '&mode=' + mode);
+            } else {
+                results = await api('/api/knowledge-bases/search-all?q=' + encodeURIComponent(query) + '&top_k=' + topK + '&mode=' + mode);
+            }
+            renderSearchResults(results, query, mode);
+        } catch (e) {
+            resultsEl.innerHTML = '<div class="text-center text-danger py-4"><i class="bi bi-exclamation-circle"></i><br>' + esc(e.message) + '</div>';
+        }
+    }
+
+    function renderSearchResults(results, query, mode) {
+        var resultsEl = document.getElementById('search-results');
+        if (!results || !results.length) {
+            resultsEl.innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-search"></i><p class="mt-2">未找到相关结果</p></div>';
+            return;
+        }
+        var modeLabel = mode === 'fts' ? '全文检索' : '向量检索';
+        var html = '<div class="mb-2 text-muted small">找到 ' + results.length + ' 个结果（' + modeLabel + ': "' + esc(query) + '"）</div>';
+        for (var i = 0; i < results.length; i++) {
+            if (mode === 'fts') {
+                html += renderFTSResult(results[i], i);
+            } else {
+                html += renderVectorResult(results[i], i);
+            }
+        }
+        resultsEl.innerHTML = html;
+    }
+
+    // ── Document Detail ────────────────────────────────────────────
+    function showDocDetail(kbName, docId, event) {
+        if (event) event.stopPropagation();
+        var modal = new bootstrap.Modal(document.getElementById('docDetailModal'));
+        modal.show();
+        document.getElementById('doc-detail-title').textContent = '加载中...';
+        document.getElementById('doc-detail-content').innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm me-1" role="status"></span> 加载中...</span>';
+        document.getElementById('doc-detail-chunks').innerHTML = '';
+        document.getElementById('dd-chunk-hint').textContent = '';
+        api('/api/knowledge-bases/' + encodeURIComponent(kbName) + '/documents/' + encodeURIComponent(docId))
+            .then(function (data) {
+                document.getElementById('doc-detail-title').textContent = esc(data.filename);
+                document.getElementById('dd-file-type').textContent = data.file_type || '-';
+                document.getElementById('dd-char-count').textContent = formatNumber(data.char_count || 0);
+                document.getElementById('dd-chunk-count').textContent = data.chunk_count || 0;
+                document.getElementById('doc-detail-content').innerHTML = esc(data.text_content || '(无文本内容)');
+                // 分块列表
+                var chunks = data.chunks || [];
+                document.getElementById('dd-chunk-hint').textContent = '（共 ' + chunks.length + ' 个分块）';
+                if (chunks.length) {
+                    document.getElementById('doc-detail-chunks').innerHTML = chunks.map(function (c, i) {
+                        var meta = c.metadata || {};
+                        var heading = meta.heading || '';
+                        return '<div class="card mb-2">' +
+                            '<div class="card-header py-1 px-3 d-flex justify-content-between align-items-center" style="cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">' +
+                            '<small><strong>分块 #' + (i + 1) + '</strong>' +
+                            (heading ? ' <span class="badge bg-secondary">' + esc(heading) + '</span>' : '') +
+                            '</small>' +
+                            '<small class="text-muted"><i class="bi bi-chevron-down"></i></small></div>' +
+                            '<div class="card-body py-2 px-3" style="font-size:0.84rem;white-space:pre-wrap;max-height:200px;overflow-y:auto;">' + esc(c.text) + '</div>' +
+                            '</div>';
+                    }).join('');
+                } else {
+                    document.getElementById('doc-detail-chunks').innerHTML = '<span class="text-muted">该文档没有分块（ChromaDB 中可能无向量数据）</span>';
+                }
+            })
+            .catch(function (e) {
+                document.getElementById('doc-detail-content').innerHTML = '<span class="text-danger">加载失败: ' + esc(e.message) + '</span>';
+            });
+    }
+
+    function renderVectorResult(r, i) {
+        var score = (r.score || 0);
+        var scorePct = (score * 100).toFixed(1);
+        var barColor = score > 0.7 ? '#10b981' : score > 0.4 ? '#f59e0b' : '#ef4444';
+        var meta = r.metadata || {};
+        var heading = meta.heading || '';
+        var source = meta.source || '';
+        return '<div class="card mb-2">' +
+            '<div class="card-body py-2 px-3">' +
+            '<div class="d-flex justify-content-between align-items-start mb-1">' +
+            '<div class="text-truncate me-2"><strong>#' + (i + 1) + '</strong>' +
+            (heading ? ' <span class="badge bg-secondary">' + esc(heading) + '</span>' : '') +
+            ' <span class="badge bg-info">' + esc(r.kb_name) + '</span>' +
+            (source ? ' <small class="text-muted">' + esc(source) + '</small>' : '') +
+            '</div>' +
+            '<div class="text-end" style="flex-shrink:0;min-width:100px;">' +
+            '<div class="progress" style="height:6px;">' +
+            '<div class="progress-bar" style="width:' + scorePct + '%;background:' + barColor + ';"></div></div>' +
+            '<small class="text-muted" style="font-size:0.7rem;">' + scorePct + '%</small></div></div>' +
+            '<p class="mb-0 small pre-wrap" style="max-height:60px;overflow:hidden;">' + esc(r.text || '').slice(0, 300) + '</p>' +
+            '</div></div>';
+    }
+
+    function renderFTSResult(r, i) {
+        var snippet = r.snippet || '';
+        var rankVal = r.rank !== undefined && r.rank !== null ? r.rank.toFixed(2) : '-';
+        return '<div class="card mb-2">' +
+            '<div class="card-body py-2 px-3">' +
+            '<div class="d-flex justify-content-between align-items-start mb-1">' +
+            '<div class="text-truncate me-2"><strong>#' + (i + 1) + '</strong>' +
+            ' <span class="badge bg-info">' + esc(r.kb_name) + '</span>' +
+            (r.filename ? ' <small class="text-muted">' + esc(r.filename) + '</small>' : '') +
+            '</div>' +
+            '<small class="text-muted" style="flex-shrink:0;">rank: ' + rankVal + '</small></div>' +
+            '<p class="mb-0 small" style="max-height:60px;overflow:hidden;line-height:1.4;">' + snippet + '</p>' +
+            '</div></div>';
+    }
+
+    // ── Stats tab ──────────────────────────────────────────────────
+    async function populateStatsKBSelect() {
+        try {
+            var kbs = await api('/api/knowledge-bases');
+            var sel = document.getElementById('stats-kb-select');
+            var prev = sel.value;
+            sel.innerHTML = '<option value="">-- 选择知识库 --</option>' + kbs.map(function (kb) {
+                return '<option value="' + esc(kb.kb_name) + '">' + esc(kb.kb_name) + '</option>';
+            }).join('');
+            sel.value = prev;
+        } catch (e) {
+        }
+    }
+
+    document.getElementById('stats-kb-select').addEventListener('change', function () {
+        var name = this.value;
+        if (name) loadStats(name);
+    });
+
+    async function loadStats(kbName) {
+        try {
+            var detail = await api('/api/knowledge-bases/' + encodeURIComponent(kbName));
+            var docs = Array.isArray(detail.documents) ? detail.documents : (detail.documents && detail.documents.items || []);
+            document.getElementById('stats-doc-count').textContent = docs.length;
+            document.getElementById('stats-chunk-count').textContent = detail.chunk_count || 0;
+            var totalChunks = docs.reduce(function (s, d) {
+                return s + (d.chunk_count || 0);
+            }, 0);
+            var avg = docs.length ? Math.round(totalChunks / docs.length) : 0;
+            document.getElementById('stats-avg-chunk').textContent = avg;
+            document.getElementById('stats-dim').textContent = '384';
+
+            var ctx = document.getElementById('chunkDistChart');
+            if (!ctx) return;
+            if (window._chunkChart) window._chunkChart.destroy();
+            window._chunkChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: docs.map(function (d) {
+                        return d.filename.length > 20 ? d.filename.slice(0, 17) + '...' : d.filename;
+                    }),
+                    datasets: [{
+                        label: '分块数',
+                        data: docs.map(function (d) {
+                            return d.chunk_count || 0;
+                        }),
+                        backgroundColor: docs.map(function (_, i) {
+                            return getChartColor(i, false);
+                        }),
+                        borderRadius: 6,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {legend: {display: false}},
+                    scales: {
+                        x: {ticks: {font: {size: 10}}},
+                        y: {beginAtZero: true, ticks: {stepSize: 1}}
+                    }
+                }
+            });
+        } catch (e) {
+            console.error('Stats load error:', e);
+        }
+    }
+
+    // ── Model Management ───────────────────────────────────────────
+    async function checkModelStatus() {
+        try {
+            var resp = await fetch('/api/rag/model-status');
+            var data = await resp.json();
+            var badge = document.getElementById('model-status-badge');
+            var statusText = document.getElementById('stat-embedding-status');
+            if (data.ready) {
+                badge.innerHTML = '<span class="badge bg-success">已就绪</span>';
+                statusText.textContent = '已就绪';
+                statusText.className = 'stat-badge-value text-success';
+                document.getElementById('btn-rebuild-indexes').disabled = false;
+            } else {
+                badge.innerHTML = '<span class="badge bg-danger">未加载</span>';
+                statusText.textContent = '未加载';
+                statusText.className = 'stat-badge-value text-danger';
+                document.getElementById('btn-rebuild-indexes').disabled = true;
+            }
+            document.getElementById('model-name').textContent = data.model || 'BAAI/bge-small-zh-v1.5';
+            document.getElementById('model-dim').textContent = data.dimension || 384;
+        } catch (e) {
+            document.getElementById('model-status-badge').innerHTML = '<span class="badge bg-secondary">未知</span>';
+        }
+    }
+
+    function showModelModal() {
+        var modal = new bootstrap.Modal(document.getElementById('modelModal'));
+        modal.show();
+        checkModelStatus();
+    }
+
+    async function downloadModel() {
+        var btn = document.getElementById('btn-download-model');
+        var statusDiv = document.getElementById('model-action-status');
+        var statusText = document.getElementById('model-status-text');
+        var spinner = document.getElementById('model-spinner');
+
+        btn.disabled = true;
+        statusDiv.style.display = '';
+        statusDiv.className = 'alert alert-info d-flex align-items-center';
+        spinner.style.display = '';
+        statusText.textContent = '正在下载模型 BAAI/bge-small-zh-v1.5，请耐心等待...';
+
+        try {
+            var result = await api('/api/rag/download-model', {method: 'POST'});
+            statusDiv.className = 'alert alert-success d-flex align-items-center';
+            spinner.style.display = 'none';
+            statusText.textContent = result.message || '模型下载完成';
+            checkModelStatus();
+        } catch (e) {
+            statusDiv.className = 'alert alert-danger d-flex align-items-center';
+            spinner.style.display = 'none';
+            statusText.textContent = '下载失败: ' + e.message;
+        }
+        btn.disabled = false;
+    }
+
+    async function reloadModel() {
+        var btn = document.getElementById('btn-reload-model');
+        var statusDiv = document.getElementById('model-action-status');
+        var statusText = document.getElementById('model-status-text');
+        var spinner = document.getElementById('model-spinner');
+
+        btn.disabled = true;
+        statusDiv.style.display = '';
+        statusDiv.className = 'alert alert-info d-flex align-items-center';
+        spinner.style.display = '';
+        statusText.textContent = '正在从本地缓存重新加载模型...';
+
+        try {
+            var result = await api('/api/rag/reload-model', {method: 'POST'});
+            statusDiv.className = 'alert alert-success d-flex align-items-center';
+            spinner.style.display = 'none';
+            statusText.textContent = result.message || '模型重新加载完成';
+            checkModelStatus();
+        } catch (e) {
+            statusDiv.className = 'alert alert-warning d-flex align-items-center';
+            spinner.style.display = 'none';
+            statusText.textContent = '本地模型未找到，请先下载模型。';
+        }
+        btn.disabled = false;
+    }
+
+    async function rebuildIndexes() {
+        var btn = document.getElementById('btn-rebuild-indexes');
+        var statusDiv = document.getElementById('model-action-status');
+        var statusText = document.getElementById('model-status-text');
+        var spinner = document.getElementById('model-spinner');
+
+        btn.disabled = true;
+        statusDiv.style.display = '';
+        statusDiv.className = 'alert alert-warning d-flex align-items-center';
+        spinner.style.display = '';
+        statusText.textContent = '正在重建所有向量索引...';
+
+        try {
+            var result = await api('/api/rag/rebuild-indexes', {method: 'POST'});
+            statusDiv.className = 'alert alert-success d-flex align-items-center';
+            spinner.style.display = 'none';
+            var rebuildInfo = result.rebuild || {};
+            var details = Object.keys(rebuildInfo).map(function (k) {
+                return k + ': ' + rebuildInfo[k] + ' chunks';
+            }).join(' | ');
+            statusText.textContent = '重建完成，共 ' + (result.total_chunks || 0) + ' 个分块。' + (details ? ' ' + details : '');
+            btn.disabled = false;
+            loadKBs();
+        } catch (e) {
+            statusDiv.className = 'alert alert-danger d-flex align-items-center';
+            spinner.style.display = 'none';
+            statusText.textContent = '重建失败: ' + e.message;
+            btn.disabled = false;
+        }
+    }
+
+    // ── Rename KB (复用顶部创建区域) ─────────────────────────────
+    function renameKB(oldName, description) {
+        _renameKBData = {old_name: oldName, description: description || ''};
+        document.getElementById('kb-create-name').value = oldName;
+        document.getElementById('kb-create-desc').value = description || '';
+        var btn = document.getElementById('kb-create-btn');
+        btn.innerHTML = '<i class="bi bi-check-lg"></i> 保存';
+        btn.onclick = saveRenameKB;
+        document.getElementById('kb-rename-cancel-btn').style.display = '';
+        // 禁用创建区域的复选框和分页操作
+    }
+
+    function cancelRenameKB() {
+        _renameKBData = null;
+        document.getElementById('kb-create-name').value = '';
+        document.getElementById('kb-create-desc').value = '';
+        var btn = document.getElementById('kb-create-btn');
+        btn.innerHTML = '<i class="bi bi-plus-lg"></i> 创建';
+        btn.onclick = createKB;
+        document.getElementById('kb-rename-cancel-btn').style.display = 'none';
+    }
+
+    async function saveRenameKB() {
+        if (!_renameKBData) return;
+        var newName = document.getElementById('kb-create-name').value.trim();
+        var newDesc = document.getElementById('kb-create-desc').value.trim();
+        if (!newName) {
+            alert('知识库名称不能为空');
+            return;
+        }
+        var oldName = _renameKBData.old_name;
+        if (newName === oldName && newDesc === _renameKBData.description) {
+            cancelRenameKB();
+            return;
+        }
+        try {
+            await api('/api/knowledge-bases/' + encodeURIComponent(oldName) + '/rename', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({new_name: newName, description: newDesc}),
+            });
+        } catch (e) {
+            alert('保存失败: ' + e.message);
+            return;
+        }
+        if (selectedKB === oldName) selectedKB = newName;
+        cancelRenameKB();
+        loadKBs(kbPage);
+    }
+
+    // ── Rename Document（文件名列内联编辑） ──────────────────────
+    function renameDoc(kbName, docId, oldFilename, evt) {
+        var tr = (evt || event).target.closest('tr');
+        if (!tr) return;
+        var filenameCell = tr.querySelector('td:nth-child(2)');
+        if (!filenameCell) return;
+        // 已处于编辑状态则跳过
+        if (filenameCell.querySelector('input')) return;
+
+        var origContent = filenameCell.innerHTML;
+        filenameCell.innerHTML = '<input type="text" class="form-control form-control-sm" value="' + esc(oldFilename) + '" style="min-width:120px;">';
+        var input = filenameCell.querySelector('input');
+        input.focus();
+        input.select();
+
+        // 修改操作列的按钮
+        var actionCell = tr.querySelector('td:last-child');
+        var pencilBtn = actionCell.querySelector('button:first-child');
+        pencilBtn.innerHTML = '<i class="bi bi-check-lg"></i>';
+        pencilBtn.onclick = function () {
+            saveDocRename(kbName, docId, filenameCell, input, pencilBtn, origContent);
+        };
+        pencilBtn.title = '保存';
+
+        // Enter 保存，Escape 取消
+        input.onkeydown = function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveDocRename(kbName, docId, filenameCell, input, pencilBtn, origContent);
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelDocRename(filenameCell, pencilBtn, origContent);
+            }
+        };
+        // blur 时取消编辑（带标记防冲突）
+        var _saving = false;
+        input.dataset.cancelToken = String(Math.random());
+        var token = input.dataset.cancelToken;
+        var saveBtn = pencilBtn;
+        saveBtn._saving = false;
+        input.onblur = function () {
+            setTimeout(function () {
+                if (input.dataset.cancelToken !== token) return;
+                if (saveBtn._saving) return;
+                if (filenameCell.querySelector('input')) {
+                    cancelDocRename(filenameCell, pencilBtn, origContent);
+                }
+            }, 180);
+        };
+    }
+
+    async function saveDocRename(kbName, docId, cell, input, btn, origContent) {
+        btn._saving = true;
+        var newName = input.value.trim();
+        if (!newName || newName === origContent) {
+            cancelDocRename(cell, btn, origContent);
+            return;
+        }
+        try {
+            await api('/api/knowledge-bases/' + encodeURIComponent(kbName) + '/documents/' + encodeURIComponent(docId) + '/rename', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({new_filename: newName}),
+            });
+            selectKB(kbName, docPage);
+        } catch (e) {
+            alert('重命名失败: ' + e.message);
+            cancelDocRename(cell, btn, origContent);
+        }
+    }
+
+    function cancelDocRename(cell, btn, origContent) {
+        cell.innerHTML = origContent;
+        btn.innerHTML = '<i class="bi bi-pencil"></i>';
+        btn.title = '重命名';
+    }
+
+    // ── Init ───────────────────────────────────────────────────────
+    loadKBs();
+    checkModelStatus();
+</script>
+{% endblock %}

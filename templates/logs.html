@@ -1,0 +1,385 @@
+{% extends "base.html" %}
+{% block title %}执行日志{% endblock %}
+{% block page_title %}<i class="bi bi-list-ul"></i> 执行日志{% endblock %}
+
+{% block extra_css %}
+<style>
+.log-level-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.log-level-INFO { background: #dbeafe; color: #1d4ed8; }
+.log-level-WARNING { background: #fef3c7; color: #b45309; }
+.log-level-ERROR { background: #fee2e2; color: #b91c1c; }
+.log-level-DEBUG { background: #e5e7eb; color: #4b5563; }
+.log-source-badge { font-size: 0.75rem; color: #64748b; font-family: monospace; }
+.log-row { cursor: pointer; }
+.log-row:hover { background: #f8fafc; }
+.log-detail { display: none; background: #f8fafc; }
+.log-detail.show { display: table-row; }
+.log-detail pre { max-height: 300px; overflow: auto; font-size: 0.82rem; background: #1e293b; color: #e2e8f0; padding: 12px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; }
+.log-row td:nth-child(6) { word-break: break-word; max-width: 400px; }
+.filter-row { background: white; border-radius: var(--radius-sm); padding: 16px 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
+.filter-row .form-select, .filter-row .form-control { font-size: 0.85rem; }
+/* ── Dark Mode ── */
+body.dark-mode .filter-row { background: var(--surface); }
+body.dark-mode .log-entry:hover { background: rgba(255,255,255,0.03); }
+body.dark-mode .log-detail { background: #1e293b; }</style>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4" id="stats-row">
+    <div class="col-md-3 col-6">
+        <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(59,130,246,0.1);color:#3b82f6;"><i class="bi bi-journal-text"></i></div>
+            <div class="stat-value" id="stat-total">--</div>
+            <div class="stat-label">总日志</div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(239,68,68,0.1);color:#ef4444;"><i class="bi bi-exclamation-triangle"></i></div>
+            <div class="stat-value" id="stat-errors">--</div>
+            <div class="stat-label">错误</div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(16,185,129,0.1);color:#10b981;"><i class="bi bi-link-45deg"></i></div>
+            <div class="stat-value" id="stat-traces">--</div>
+            <div class="stat-label">执行链路</div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(245,158,11,0.1);color:#f59e0b;"><i class="bi bi-clock-history"></i></div>
+            <div class="stat-value" id="stat-last">--</div>
+            <div class="stat-label">最近日志</div>
+        </div>
+    </div>
+</div>
+
+<div class="filter-row">
+    <form id="filter-form" onsubmit="return loadLogs(1);">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-2 col-6">
+                <label class="text-muted text-xs mb-1">级别</label>
+                <select class="form-select" id="filter-level">
+                    <option value="">全部</option>
+                </select>
+            </div>
+            <div class="col-md-2 col-6">
+                <label class="text-muted text-xs mb-1">来源</label>
+                <select class="form-select" id="filter-source">
+                    <option value="">全部</option>
+                </select>
+            </div>
+            <div class="col-md-2 col-6">
+                <label class="text-muted text-xs mb-1">操作</label>
+                <select class="form-select" id="filter-action">
+                    <option value="">全部</option>
+                    <option value="llm_call_start">llm_call_start</option>
+                    <option value="llm_call_success">llm_call_success</option>
+                    <option value="llm_call_failed">llm_call_failed</option>
+                    <option value="llm_call_simulated">llm_call_simulated</option>
+                    <option value="route">route</option>
+                    <option value="route_result">route_result</option>
+                    <option value="execute_start">execute_start</option>
+                    <option value="execute_complete">execute_complete</option>
+                    <option value="execute_failed">execute_failed</option>
+                    <option value="phase_start">phase_start</option>
+                    <option value="phase_complete">phase_complete</option>
+                    <option value="phase_failed">phase_failed</option>
+                </select>
+            </div>
+            <div class="col-md-3 col-6">
+                <label class="text-muted text-xs mb-1">搜索</label>
+                <input type="text" class="form-control" id="filter-q" placeholder="搜索消息/元数据...">
+            </div>
+            <div class="col-md-2 col-6">
+                <label class="text-muted text-xs mb-1">Trace ID</label>
+                <input type="text" class="form-control" id="filter-trace" placeholder="trace_id...">
+            </div>
+            <div class="col-md-1 col-3">
+                <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i></button>
+            </div>
+            <div class="col-md-1 col-3">
+                <a class="btn btn-outline-secondary w-100" onclick="clearFilters()"><i class="bi bi-x-lg"></i></a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h6><i class="bi bi-list-ul me-1"></i>日志列表</h6>
+        <div class="d-flex gap-2 align-items-center">
+            <span class="text-muted text-xs" id="selected-count" style="display:none;"></span>
+            <button class="btn btn-outline-danger btn-sm" id="batch-delete-btn" style="display:none;" onclick="batchDelete()">
+                <i class="bi bi-trash"></i> 批量删除
+            </button>
+            <span class="text-muted text-xs" id="result-count"></span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th style="width:36px;"><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)"></th>
+                        <th style="width:60px;">级别</th>
+                        <th style="width:140px;">时间</th>
+                        <th style="width:100px;">来源</th>
+                        <th style="width:100px;">操作</th>
+                        <th style="width:140px;">Trace ID</th>
+                        <th>消息</th>
+                        <th style="width:80px;">耗时</th>
+                        <th style="width:60px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="log-tbody">
+                    <tr><td colspan="9" class="text-center text-muted py-4">加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer d-flex justify-content-between align-items-center py-2">
+        <small class="text-muted" id="pagination-info"></small>
+        <div class="d-flex align-items-center gap-2">
+            <select class="form-select form-select-sm" style="width:auto;" id="log-page-size" onchange="changeLogPageSize(this)">
+                <option value="50">50条/页</option>
+                <option value="100">100条/页</option>
+                <option value="200">200条/页</option>
+                <option value="500">500条/页</option>
+            </select>
+            <nav><ul class="pagination pagination-sm mb-0" id="log-pagination"></ul></nav>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var page = 1, totalPages = 1, allSources = [], allLevels = [];
+
+function getLogPageSize() {
+    var sel = document.getElementById('log-page-size');
+    return sel ? parseInt(sel.value) : 50;
+}
+
+function changeLogPageSize(sel) {
+    loadLogs(1);
+}
+
+function loadStats() {
+    fetch('/api/logs-stats').then(function(r) { return r.json(); }).then(function(d) {
+        document.getElementById('stat-total').textContent = formatNumber(d.total);
+        document.getElementById('stat-errors').textContent = formatNumber(d.by_level && d.by_level.ERROR ? d.by_level.ERROR : 0);
+        document.getElementById('stat-traces').textContent = formatNumber(d.traces || 0);
+        document.getElementById('stat-last').textContent = d.last_log ? formatDate(d.last_log) : '-';
+    });
+}
+
+function loadLogs(p) {
+    page = p || 1;
+    var level = document.getElementById('filter-level').value;
+    var source = document.getElementById('filter-source').value;
+    var action = document.getElementById('filter-action').value;
+    var q = document.getElementById('filter-q').value;
+    var traceFilter = document.getElementById('filter-trace').value;
+
+    var ps = getLogPageSize();
+    var url = '/api/logs?limit=' + ps + '&offset=' + ((page - 1) * ps);
+    if (level) url += '&level=' + encodeURIComponent(level);
+    if (source) url += '&source=' + encodeURIComponent(source);
+    if (action) url += '&action=' + encodeURIComponent(action);
+    if (q) url += '&q=' + encodeURIComponent(q);
+    if (traceFilter) url += '&trace_id=' + encodeURIComponent(traceFilter);
+
+    document.getElementById('select-all').checked = false;
+    document.getElementById('batch-delete-btn').style.display = 'none';
+    document.getElementById('selected-count').style.display = 'none';
+    var tbody = document.getElementById('log-tbody');
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4"><i class="bi bi-arrow-repeat me-1"></i>加载中...</td></tr>';
+
+    fetch(url).then(function(r) { return r.json(); }).then(function(d) {
+        tbody.innerHTML = '';
+        if (d.sources && !allSources.length) {
+            allSources = d.sources;
+            populateFilters(d.sources, d.levels);
+        }
+        if (!d.logs || !d.logs.length) {
+            if (d.total > 0 && page > 1) {
+                loadLogs(Math.ceil(d.total / d.limit));
+                return;
+            }
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">暂无日志</td></tr>';
+            document.getElementById('result-count').textContent = '共 0 条';
+            document.getElementById('pagination-info').textContent = '';
+            return;
+        }
+        document.getElementById('result-count').textContent = '共 ' + d.total + ' 条';
+        var from = d.offset + 1;
+        var to = Math.min(d.offset + d.limit, d.total);
+        document.getElementById('pagination-info').textContent = '显示 ' + from + ' - ' + to + ' 条';
+
+        d.logs.forEach(function(log) {
+            var tr = document.createElement('tr');
+            tr.className = 'log-row';
+            tr.setAttribute('data-id', log.log_id);
+
+            var lvlClass = 'log-level-' + (log.level || 'INFO');
+            var duration = log.duration_ms ? (log.duration_ms >= 1000 ? (log.duration_ms/1000).toFixed(1) + 's' : log.duration_ms + 'ms') : '';
+            var msg = esc(log.message || '').substring(0, 200);
+
+            tr.innerHTML = '<td><input type="checkbox" class="log-checkbox" value="' + log.log_id + '" onchange="updateBatchDeleteBtn()"></td>' +
+                '<td><span class="log-level-badge ' + lvlClass + '">' + esc(log.level) + '</span></td>' +
+                '<td class="text-xs text-muted">' + formatDate(log.timestamp) + '</td>' +
+                '<td><span class="log-source-badge">' + esc(log.source) + '</span></td>' +
+                '<td><code style="font-size:0.78rem;">' + esc(log.action) + '</code></td>' +
+                '<td style="font-family:monospace;font-size:0.78rem;color:var(--text-muted);">' + (log.trace_id ? esc(log.trace_id).substring(0, 16) : '-') + '</td>' +
+                '<td class="text-sm">' + msg + '</td>' +
+                '<td class="text-xs text-muted">' + duration + '</td>' +
+                '<td class="text-nowrap">' +
+                    '<a href="#" onclick="event.stopPropagation();deleteSingleLog(' + log.log_id + ');return false;" class="text-danger" style="font-size:0.8rem;text-decoration:none;" title="删除"><i class="bi bi-x-lg"></i></a>' +
+                    '<i class="bi bi-chevron-down text-muted ms-2" style="font-size:0.7rem;cursor:pointer;"></i></td>';
+
+            tr.addEventListener('click', function(e) {
+                if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'A' && !e.target.closest('a')) {
+                    toggleDetail(log.log_id);
+                }
+            });
+            tbody.appendChild(tr);
+
+            // Detail row (hidden)
+            var detailTr = document.createElement('tr');
+            detailTr.id = 'detail-' + log.log_id;
+            detailTr.className = 'log-detail';
+            detailTr.innerHTML = '<td colspan="9"><div class="p-3">' +
+                '<div class="row g-2 mb-2">' +
+                '<div class="col-md-3"><small class="text-muted">Trace ID:</small><br><code>' + esc(log.trace_id || '-') + '</code></div>' +
+                '<div class="col-md-3"><small class="text-muted">Parent Log:</small><br><code>' + (log.parent_log_id || '-') + '</code></div>' +
+                '<div class="col-md-3"><small class="text-muted">Duration:</small><br><code>' + (log.duration_ms ? log.duration_ms + 'ms' : '-') + '</code></div>' +
+                '<div class="col-md-3"><small class="text-muted">Project:</small><br><code>' + esc(log.project_id || '-') + '</code></div>' +
+                '</div>' +
+                '<small class="text-muted">Metadata:</small>' +
+                '<pre>' + esc(formatMetadata(log.metadata)) + '</pre>' +
+                '</div></td>';
+            tbody.appendChild(detailTr);
+        });
+
+        totalPages = Math.ceil(d.total / d.limit) || 1;
+        renderPagination('log-pagination', page, totalPages, function(pg) { loadLogs(pg); });
+    }).catch(function() {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">加载失败</td></tr>';
+    });
+    return false;
+}
+
+function toggleDetail(id) {
+    var row = document.getElementById('detail-' + id);
+    if (!row) return;
+    row.classList.toggle('show');
+}
+
+function formatMetadata(meta) {
+    if (!meta || meta === '{}') return '(空)';
+    try {
+        return JSON.stringify(typeof meta === 'string' ? JSON.parse(meta) : meta, null, 2);
+    } catch(e) {
+        return meta;
+    }
+}
+
+function populateFilters(sources, levels) {
+    var srcSel = document.getElementById('filter-source');
+    var lvlSel = document.getElementById('filter-level');
+    sources.forEach(function(s) {
+        var opt = document.createElement('option');
+        opt.value = s; opt.textContent = s;
+        srcSel.appendChild(opt);
+    });
+    levels.forEach(function(l) {
+        var opt = document.createElement('option');
+        opt.value = l; opt.textContent = l;
+        lvlSel.appendChild(opt);
+    });
+}
+
+function clearFilters() {
+    document.getElementById('filter-level').value = '';
+    document.getElementById('filter-source').value = '';
+    document.getElementById('filter-action').value = '';
+    document.getElementById('filter-q').value = '';
+    document.getElementById('filter-trace').value = '';
+    loadLogs(1);
+}
+
+// ── 批量/单条删除 ──
+
+function toggleSelectAll(master) {
+    document.querySelectorAll('.log-checkbox').forEach(function(cb) { cb.checked = master.checked; });
+    updateBatchDeleteBtn();
+}
+
+function updateBatchDeleteBtn() {
+    var checked = document.querySelectorAll('.log-checkbox:checked');
+    var btn = document.getElementById('batch-delete-btn');
+    var count = document.getElementById('selected-count');
+    if (checked.length > 0) {
+        btn.style.display = 'inline-block';
+        count.style.display = 'inline';
+        count.textContent = '已选 ' + checked.length + ' 条';
+    } else {
+        btn.style.display = 'none';
+        count.style.display = 'none';
+    }
+}
+
+function deleteSingleLog(logId) {
+    if (!confirm('确定删除此日志？')) return;
+    fetch('/api/logs/' + logId, {method:'DELETE'}).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.success) {
+            loadLogs(page);
+            loadStats();
+        }
+    }).catch(function() {
+        location.reload();
+    });
+}
+
+function batchDelete() {
+    var checked = document.querySelectorAll('.log-checkbox:checked');
+    if (!checked.length) return;
+    if (!confirm('确定删除选中的 ' + checked.length + ' 条日志？')) return;
+    var ids = [];
+    checked.forEach(function(cb) { ids.push(parseInt(cb.value)); });
+    fetch('/api/logs/batch-delete', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({log_ids: ids}),
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.success) {
+            document.getElementById('select-all').checked = false;
+            loadLogs(page);
+            loadStats();
+        } else {
+            alert('删除失败：' + (d.error || '未知错误'));
+        }
+    }).catch(function() {
+        alert('网络错误，请重试');
+    });
+}
+
+function getUrlParam(name) {
+    var m = window.location.search.match(new RegExp('[?&]' + name + '=([^&]*)'));
+    return m ? decodeURIComponent(m[1]) : '';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadStats();
+    var traceId = getUrlParam('trace_id');
+    if (traceId) {
+        document.getElementById('filter-trace').value = traceId;
+    }
+    loadLogs(1);
+});
+</script>
+{% endblock %}

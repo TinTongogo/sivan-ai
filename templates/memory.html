@@ -1,0 +1,947 @@
+{% extends "base.html" %}
+
+{% block title %}记忆管理{% endblock %}
+{% block page_title %}<i class="bi bi-archive"></i> 记忆管理系统{% endblock %}
+
+{% block content %}
+<!-- ======================== 统计看板 ======================== -->
+<div class="row g-4 mb-4" id="statsRow">
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(67,97,238,0.1);color:#4361ee;"><i class="bi bi-archive"></i></div>
+            <div>
+                <div class="stat-badge-value" id="statTotal">--</div>
+                <div class="stat-badge-label">总记忆数</div>
+                <small class="text-muted" id="statTotalSub">-- 条活跃</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(16,185,129,0.1);color:#10b981;"><i class="bi bi-graph-up"></i></div>
+            <div>
+                <div class="stat-badge-value" id="statRetention">--</div>
+                <div class="stat-badge-label">平均保留率</div>
+                <div class="progress mt-1" style="height:4px;width:100px;">
+                    <div class="progress-bar bg-success" id="statRetentionBar" style="width:0%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(59,130,246,0.1);color:#3b82f6;"><i class="bi bi-layers"></i></div>
+            <div>
+                <div class="stat-badge-value" id="statLevels">--</div>
+                <div class="stat-badge-label">层级分布</div>
+                <small class="text-muted">session / user / team / project</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(245,158,11,0.1);color:#f59e0b;"><i class="bi bi-eye"></i></div>
+            <div>
+                <div class="stat-badge-value" id="statAccess">--</div>
+                <div class="stat-badge-label">访问统计</div>
+                <small class="text-muted">总访问次数 / <span id="statArchived">0</span> 条已归档</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ======================== 筛选栏 ======================== -->
+<div class="card mb-4">
+    <div class="card-header py-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <h6 class="mb-0"><i class="bi bi-funnel me-1"></i>筛选条件
+            <span class="badge bg-secondary ms-2" id="filterBadge" style="display:none">0</span>
+        </h6>
+        <div class="d-flex gap-2 flex-wrap">
+            <button class="btn btn-sm btn-outline-secondary" onclick="resetFilters()"><i class="bi bi-x-circle"></i> 重置</button>
+            <button class="btn btn-sm btn-outline-primary" onclick="showStoreModal()"><i class="bi bi-plus-lg"></i> 新建记忆</button>
+            <button class="btn btn-sm btn-outline-info" onclick="showSearchModal()"><i class="bi bi-search"></i> 语义搜索</button>
+        </div>
+    </div>
+    <div class="card-body py-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-lg-2 col-md-4">
+                <label class="form-label small fw-bold text-muted">层级</label>
+                <select class="form-select form-select-sm" id="filterLevel" onchange="applyFilters()">
+                    <option value="">全部层级</option>
+                    <option value="session">Session</option>
+                    <option value="user">User</option>
+                    <option value="team">Team</option>
+                    <option value="project">Project</option>
+                </select>
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <label class="form-label small fw-bold text-muted">归档状态</label>
+                <select class="form-select form-select-sm" id="filterArchived" onchange="applyFilters()">
+                    <option value="">全部</option>
+                    <option value="0">未归档</option>
+                    <option value="1">已归档</option>
+                </select>
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <label class="form-label small fw-bold text-muted">保留率 ≥</label>
+                <input type="number" class="form-control form-control-sm" id="filterRetMin"
+                       placeholder="0.0" min="0" max="1" step="0.05" onchange="applyFilters()">
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <label class="form-label small fw-bold text-muted">保留率 ≤</label>
+                <input type="number" class="form-control form-control-sm" id="filterRetMax"
+                       placeholder="1.0" min="0" max="1" step="0.05" onchange="applyFilters()">
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <label class="form-label small fw-bold text-muted">作用域</label>
+                <input type="text" class="form-control form-control-sm" id="filterScope"
+                       placeholder="如: user_001" onchange="applyFilters()">
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <label class="form-label small fw-bold text-muted">关键词</label>
+                <input type="text" class="form-control form-control-sm" id="filterKeyword"
+                       placeholder="搜索内容..." onkeydown="if(event.key==='Enter') applyFilters()">
+            </div>
+        </div>
+        <div class="row g-2 mt-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label small fw-bold text-muted">排序</label>
+                <select class="form-select form-select-sm" id="filterSort" onchange="applyFilters()">
+                    <option value="last_accessed_at">最后访问</option>
+                    <option value="created_at">创建时间</option>
+                    <option value="retention">保留率</option>
+                    <option value="access_count">访问次数</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label small fw-bold text-muted">&nbsp;</label>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="filterSortDesc" checked onchange="applyFilters()">
+                    <label class="form-check-label small">降序</label>
+                </div>
+            </div>
+            </div>
+            <div class="col-auto ms-auto">
+                <button class="btn btn-sm btn-primary" onclick="applyFilters()"><i class="bi bi-search"></i> 查询</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ======================== 批量操作栏 ======================== -->
+<div class="card mb-4 border-primary" id="batchBar" style="display:none">
+    <div class="card-body py-2 d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-check-square text-primary me-1"></i>已选 <strong id="batchCount">0</strong> 条</span>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-success" onclick="batchAction('archive')"><i class="bi bi-archive"></i> 归档</button>
+            <button class="btn btn-sm btn-outline-info" onclick="batchAction('unarchive')"><i class="bi bi-unarchive"></i> 恢复</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="batchAction('delete')"><i class="bi bi-trash"></i> 删除</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="clearSelection()"><i class="bi bi-x-lg"></i> 取消选择</button>
+        </div>
+    </div>
+</div>
+
+<!-- ======================== 记忆列表 ======================== -->
+<div class="card mb-4">
+    <div class="card-header py-3 d-flex flex-wrap align-items-center justify-content-between">
+        <h6 class="mb-0"><i class="bi bi-list-ul me-1"></i>记忆条目 <span class="badge bg-primary ms-2" id="listTotal">0</span></h6>
+        <div>
+            <button class="btn btn-sm btn-outline-warning" onclick="doArchive()"><i class="bi bi-archive"></i> 归档低保留率</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadRetentionStatus()"><i class="bi bi-bar-chart"></i> 保留率概览</button>
+            <button class="btn btn-sm btn-outline-primary ms-1" onclick="loadList()"><i class="bi bi-arrow-clockwise"></i> 刷新</button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="memoryTable">
+                <thead>
+                <tr>
+                    <th style="width:36px"><div class="form-check"><input class="form-check-input" type="checkbox" id="selectAll" onchange="toggleSelectAll()"></div></th>
+                    <th style="width:90px">层级</th>
+                    <th style="width:100px">保留率</th>
+                    <th>内容预览</th>
+                    <th style="width:80px">访问</th>
+                    <th style="width:90px">作用域</th>
+                    <th style="width:120px">最后访问</th>
+                    <th style="width:130px">操作</th>
+                </tr>
+                </thead>
+                <tbody id="memoryTableBody">
+                <tr id="loadingRow">
+                    <td colspan="8" class="text-center py-5">
+                        <div class="spinner-border text-primary spinner-border-sm me-2" role="status"></div>
+                        <span class="text-muted">加载中...</span>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 空状态 -->
+        <div id="emptyState" class="empty-state" style="display:none">
+            <i class="bi bi-inbox"></i>
+            <h5>暂无记忆数据</h5>
+            <p>创建一条新记忆开始使用</p>
+            <button class="btn btn-primary btn-sm" onclick="showStoreModal()"><i class="bi bi-plus-lg"></i> 新建记忆</button>
+        </div>
+
+        <!-- 分页 -->
+        <div class="d-flex justify-content-between align-items-center px-3 py-3 border-top" id="paginationRow">
+            <div class="text-muted small">显示 <span id="pageStart">0</span>-<span id="pageEnd">0</span>，共 <strong id="pageTotal">0</strong> 条</div>
+            <div class="d-flex align-items-center gap-2">
+                <select class="form-select form-select-sm" style="width:auto;" id="memory-page-size" onchange="changeMemoryPageSize(this)">
+                    <option value="10">10条/页</option>
+                    <option value="20" selected>20条/页</option>
+                    <option value="50">50条/页</option>
+                    <option value="100">100条/页</option>
+                </select>
+                <nav><ul class="pagination pagination-sm mb-0" id="tablePagination"></ul></nav>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ======================== 详情面板 (Slide-out) ======================== -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="detailPanel" style="width:500px">
+    <div class="offcanvas-header border-bottom">
+        <h5 class="offcanvas-title"><i class="bi bi-info-circle me-2"></i>记忆详情</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+    </div>
+    <div class="offcanvas-body" id="detailBody">
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary spinner-border-sm me-2" role="status"></div>
+            <span class="text-muted">加载中...</span>
+        </div>
+    </div>
+</div>
+
+<!-- ======================== 新建记忆模态框 ======================== -->
+<div class="modal fade" id="storeModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-lg me-2"></i>新建记忆</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="storeForm" onsubmit="event.preventDefault();submitStore()">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">层级 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="storeLevel" onchange="updateScopeField()" required>
+                                <option value="session">Session — 会话级 (1h 衰减)</option>
+                                <option value="user">User — 用户级 (24h 衰减)</option>
+                                <option value="team">Team — 团队级 (7d 衰减)</option>
+                                <option value="project">Project — 项目级 (30d 衰减)</option>
+                            </select>
+                            <div class="form-text">不同层级有不同的遗忘曲线衰减周期</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">作用域 ID <span class="text-danger">*</span></label>
+                            <div id="scopeFieldContainer">
+                                <input type="text" class="form-control" id="storeScope" placeholder="输入会话 ID，如: conv_abc123" required>
+                            </div>
+                            <div class="form-text" id="scopeHelpText">当前对话的唯一标识</div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">内容 <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="storeContent" rows="6" placeholder="输入记忆内容..." required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">元数据 <small class="text-muted">(JSON, 可选)</small></label>
+                        <textarea class="form-control font-monospace" id="storeMetadata" rows="3"
+                                  placeholder='{"source": "manual", "tags": ["important"]}'>{"source": "manual"}</textarea>
+                        <div class="form-text">可附加结构化信息用于筛选</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="storeSubmitBtn" onclick="submitStore()"><i class="bi bi-check-lg"></i> 保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ======================== 编辑记忆模态框 ======================== -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>编辑记忆</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editForm" onsubmit="event.preventDefault();submitEdit()">
+                    <input type="hidden" id="editId">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">内容</label>
+                        <textarea class="form-control" id="editContent" rows="6" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">元数据 <small class="text-muted">(JSON)</small></label>
+                        <textarea class="form-control font-monospace" id="editMetadata" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="editSubmitBtn" onclick="submitEdit()"><i class="bi bi-check-lg"></i> 保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ======================== 语义搜索模态框 ======================== -->
+<div class="modal fade" id="searchModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-search me-2"></i>语义搜索</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control form-control-lg" id="searchQuery"
+                           placeholder="输入搜索文本，支持语义匹配..." onkeydown="if(event.key==='Enter') doSearch()">
+                    <button class="btn btn-primary px-4" onclick="doSearch()"><i class="bi bi-search me-1"></i> 搜索</button>
+                </div>
+                <div class="row mb-3 g-2">
+                    <div class="col-md-3">
+                        <select class="form-select form-select-sm" id="searchLevel">
+                            <option value="">全部层级</option>
+                            <option value="session">Session</option>
+                            <option value="user">User</option>
+                            <option value="team">Team</option>
+                            <option value="project">Project</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3"><input type="text" class="form-control form-control-sm" id="searchScope" placeholder="作用域过滤"></div>
+                    <div class="col-md-2"><input type="number" class="form-control form-control-sm" id="searchLimit" value="10" min="1" max="50"></div>
+                    <div class="col-md-4 text-end"><span class="text-muted small" id="searchResultCount"></span></div>
+                </div>
+                <div id="searchResults" class="mt-2">
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-search fs-1 d-block mb-2"></i>
+                        <span>输入关键词开始语义搜索</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ======================== 保留率概览模态框 ======================== -->
+<div class="modal fade" id="retentionModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-bar-chart me-2"></i>保留率概览</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="retentionBody">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary spinner-border-sm me-2" role="status"></div>
+                    <span class="text-muted">加载中...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- ======================== 本能模板 (Instinct Patterns) ======================== -->
+<div class="card mb-4 mt-4">
+    <div class="card-header py-3 d-flex justify-content-between align-items-center" style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#instinctCollapse" aria-expanded="false">
+        <h6 class="mb-0"><i class="bi bi-lightning-charge me-1"></i>本能模板 <span class="badge bg-info ms-1" id="instinctTotalBadge">0</span></h6>
+        <div><i class="bi bi-chevron-down text-muted" id="instinctChevron"></i></div>
+    </div>
+    <div class="collapse" id="instinctCollapse">
+        <div class="card-body">
+            <!-- 统计行 -->
+            <div class="row g-3 mb-3" id="instinctStatsRow">
+                <div class="col-md-3"><div class="stat-badge mb-0"><div class="stat-badge-icon" style="background:rgba(111,66,193,0.1);color:#6f42c1;"><i class="bi bi-lightning"></i></div><div><div class="stat-badge-value" id="instStatTotal">--</div><div class="stat-badge-label">总模板数</div></div></div></div>
+                <div class="col-md-3"><div class="stat-badge mb-0"><div class="stat-badge-icon" style="background:rgba(25,135,84,0.1);color:#198754;"><i class="bi bi-check-circle"></i></div><div><div class="stat-badge-value" id="instStatActive">--</div><div class="stat-badge-label">已激活</div></div></div></div>
+                <div class="col-md-6"><div class="stat-badge mb-0"><div class="stat-badge-icon" style="background:rgba(13,110,253,0.1);color:#0d6efd;"><i class="bi bi-pie-chart"></i></div><div><div class="stat-badge-value" id="instStatByType">--</div><div class="stat-badge-label">按类型分布</div></div></div></div>
+            </div>
+            <!-- 表格 -->
+            <div class="table-responsive">
+                <table class="table table-hover table-sm" id="instinctTable">
+                    <thead>
+                        <tr>
+                            <th style="width:100px">任务类型</th>
+                            <th>任务签名</th>
+                            <th style="width:80px">成功/总数</th>
+                            <th style="width:80px">置信度</th>
+                            <th style="width:70px">状态</th>
+                            <th style="width:100px">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="instinctTableBody">
+                        <tr><td colspan="6" class="text-center py-4 text-muted"><i class="bi bi-arrow-repeat me-1"></i>加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div id="instinctEmpty" class="empty-state" style="display:none">
+                <i class="bi bi-lightning-charge"></i>
+                <h5>暂无本能模板</h5>
+                <p>Squad 执行成功后会自动生成本能模板</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // ===== 状态 =====
+    var currentPage = 1, currentPageSize = 20, currentTotal = 0, filters = {}, selectedIds = new Set();
+
+    // ===== 统计看板 =====
+    function loadStats() {
+        fetch('/api/memory/stats').then(function(r){return r.json()}).then(function(s) {
+            document.getElementById('statTotal').textContent = formatNumber(s.total_count || 0);
+            document.getElementById('statTotalSub').textContent = ((s.total_count||0)-(s.archived_count||0)) + ' 条活跃';
+            var ret = (s.avg_retention || 0) * 100;
+            document.getElementById('statRetention').textContent = ret.toFixed(1) + '%';
+            document.getElementById('statRetentionBar').style.width = ret + '%';
+            var bl = s.by_level || {};
+            document.getElementById('statLevels').innerHTML =
+                '<span class="badge bg-primary">' + (bl.session||0) + '</span> / <span class="badge bg-success">' + (bl.user||0) + '</span> / <span class="badge bg-warning text-dark">' + (bl.team||0) + '</span> / <span class="badge bg-danger">' + (bl.project||0) + '</span>';
+            document.getElementById('statAccess').textContent = formatNumber(s.total_access_count || 0);
+            document.getElementById('statArchived').textContent = s.archived_count || 0;
+        }).catch(function(){});
+    }
+
+    // ===== 筛选与列表 =====
+    function getFilters() {
+        var f = {};
+        var lv = document.getElementById('filterLevel').value; if (lv) f.level = lv;
+        var ar = document.getElementById('filterArchived').value; if (ar !== '') f.is_archived = ar === '1';
+        var rmin = document.getElementById('filterRetMin').value; if (rmin) f.retention_min = parseFloat(rmin);
+        var rmax = document.getElementById('filterRetMax').value; if (rmax) f.retention_max = parseFloat(rmax);
+        var sc = document.getElementById('filterScope').value.trim(); if (sc) f.scope_id = sc;
+        var kw = document.getElementById('filterKeyword').value.trim(); if (kw) f.keyword = kw;
+        f.sort_by = document.getElementById('filterSort').value;
+        f.sort_desc = document.getElementById('filterSortDesc').checked;
+        return f;
+    }
+
+    function getMemoryPageSize() {
+        var sel = document.getElementById('memory-page-size');
+        return sel ? parseInt(sel.value) : 20;
+    }
+
+    function changeMemoryPageSize(sel) {
+        currentPageSize = parseInt(sel.value);
+        currentPage = 1;
+        loadList();
+    }
+
+    function applyFilters() { filters = getFilters(); currentPage = 1; currentPageSize = getMemoryPageSize(); loadList(); }
+
+    function resetFilters() {
+        document.getElementById('filterLevel').value = '';
+        document.getElementById('filterArchived').value = '';
+        document.getElementById('filterRetMin').value = '';
+        document.getElementById('filterRetMax').value = '';
+        document.getElementById('filterScope').value = '';
+        document.getElementById('filterKeyword').value = '';
+        document.getElementById('filterSort').value = 'last_accessed_at';
+        document.getElementById('filterSortDesc').checked = true;
+        applyFilters();
+    }
+
+    function loadList() {
+        var params = new URLSearchParams();
+        params.set('page', currentPage);
+        params.set('page_size', currentPageSize);
+        if (filters.level) params.set('level', filters.level);
+        if (filters.is_archived !== undefined) params.set('is_archived', filters.is_archived);
+        if (filters.retention_min !== undefined) params.set('retention_min', filters.retention_min);
+        if (filters.retention_max !== undefined) params.set('retention_max', filters.retention_max);
+        if (filters.scope_id) params.set('scope_id', filters.scope_id);
+        if (filters.keyword) params.set('keyword', filters.keyword);
+        params.set('sort_by', filters.sort_by || 'last_accessed_at');
+        params.set('sort_desc', filters.sort_desc !== false ? 'true' : 'false');
+
+        var tbody = document.getElementById('memoryTableBody');
+        var empty = document.getElementById('emptyState');
+
+        tbody.innerHTML = '<tr id="loadingRow"><td colspan="8" class="text-center py-5"><div class="spinner-border text-primary spinner-border-sm me-2" role="status"></div><span class="text-muted">加载中...</span></td></tr>';
+        empty.style.display = 'none';
+
+        fetch('/api/memory?' + params.toString()).then(function(r){return r.json()}).then(function(data) {
+            var items = data.items || [];
+            currentTotal = data.total || 0;
+
+            var activeFilters = Object.keys(filters).filter(function(k){return filters[k] !== undefined && filters[k] !== '' && filters[k] !== null}).length;
+            var badge = document.getElementById('filterBadge');
+            badge.style.display = activeFilters > 0 ? 'inline' : 'none';
+            badge.textContent = activeFilters;
+
+            document.getElementById('listTotal').textContent = currentTotal;
+            document.getElementById('pageTotal').textContent = currentTotal;
+
+            if (currentTotal === 0) {
+                tbody.innerHTML = '';
+                empty.style.display = '';
+                document.getElementById('paginationRow').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('paginationRow').style.display = '';
+            var start = (data.page - 1) * data.page_size + 1;
+            var end = Math.min(start + items.length - 1, currentTotal);
+            document.getElementById('pageStart').textContent = start;
+            document.getElementById('pageEnd').textContent = end;
+
+            tbody.innerHTML = items.map(function(m) {
+                var checked = selectedIds.has(m.memory_id) ? 'checked' : '';
+                var lvBadge = ({session:'bg-primary',user:'bg-success',team:'bg-warning text-dark',project:'bg-danger'}[m.level]||'bg-secondary');
+                var retClass = m.retention < 0.15 ? 'danger' : m.retention < 0.3 ? 'warning' : 'success';
+                var archBadge = m.is_archived ? '<span class="badge bg-secondary ms-1">归档</span>' : '';
+                var preview = (m.content || '').substring(0, 80);
+                return '<tr class="' + (m.is_archived ? 'table-secondary' : '') + '">' +
+                    '<td><div class="form-check"><input class="form-check-input select-item" type="checkbox" value="' + m.memory_id + '" ' + checked + ' onchange="toggleSelect(\'' + m.memory_id + '\')"></div></td>' +
+                    '<td><span class="badge ' + lvBadge + ' w-100">' + m.level + '</span></td>' +
+                    '<td><span class="badge bg-' + retClass + ' w-100">' + (m.retention * 100).toFixed(1) + '%</span></td>' +
+                    '<td><small class="text-muted">' + esc(preview) + ((m.content||'').length > 80 ? '...' : '') + archBadge + '</small></td>' +
+                    '<td class="text-center">' + m.access_count + '</td>' +
+                    '<td><small class="text-muted">' + esc(m.scope_id) + '</small></td>' +
+                    '<td><small class="text-muted">' + formatDate(m.last_accessed_at) + '</small></td>' +
+                    '<td><div class="btn-group btn-group-sm">' +
+                    '<button class="btn btn-outline-primary" onclick="showDetail(\'' + m.memory_id + '\')" title="查看详情"><i class="bi bi-eye"></i></button>' +
+                    '<button class="btn btn-outline-secondary" onclick="showEdit(\'' + m.memory_id + '\')" title="编辑"><i class="bi bi-pencil"></i></button>' +
+                    '<button class="btn btn-outline-danger" onclick="deleteOne(\'' + m.memory_id + '\')" title="删除"><i class="bi bi-trash"></i></button>' +
+                    '</div></td></tr>';
+            }).join('');
+
+            renderPagination('tablePagination', data.page, data.total_pages, function(p) { currentPage = p; loadList(); });
+            updateBatchBar();
+        }).catch(function(err) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4"><i class="bi bi-exclamation-triangle me-2"></i>加载失败: ' + esc(err.message) + '</td></tr>';
+        });
+    }
+
+    // ===== 全选 / 选择 / 批量 =====
+    function toggleSelectAll() {
+        var checked = document.getElementById('selectAll').checked;
+        document.querySelectorAll('.select-item').forEach(function(cb) {
+            cb.checked = checked;
+            if (checked) selectedIds.add(cb.value);
+            else selectedIds.delete(cb.value);
+        });
+        updateBatchBar();
+    }
+
+    function toggleSelect(id) {
+        var cb = document.querySelector('.select-item[value="' + id + '"]');
+        if (cb && cb.checked) selectedIds.add(id);
+        else selectedIds.delete(id);
+        updateBatchBar();
+    }
+
+    function updateBatchBar() {
+        var count = selectedIds.size;
+        document.getElementById('batchBar').style.display = count > 0 ? '' : 'none';
+        document.getElementById('batchCount').textContent = count;
+    }
+
+    function clearSelection() {
+        selectedIds.clear();
+        document.querySelectorAll('.select-item').forEach(function(cb) { cb.checked = false; });
+        document.getElementById('selectAll').checked = false;
+        updateBatchBar();
+    }
+
+    function batchAction(action) {
+        var ids = Array.from(selectedIds);
+        if (ids.length === 0) return;
+        var verbs = {delete:'删除', archive:'归档', unarchive:'恢复'};
+        if (!confirm('确定要' + (verbs[action]||action) + '选中的 ' + ids.length + ' 条记忆吗？')) return;
+        fetch('/api/memory/batch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:action, memory_ids:ids})})
+            .then(function(r){return r.json()}).then(function(data) {
+                alert((verbs[action]||action) + '完成: ' + data.success_count + ' 条成功, ' + data.failed_count + ' 条失败');
+                clearSelection(); loadList(); loadStats();
+            }).catch(function(err){alert('批量操作失败: ' + err.message)});
+    }
+
+    // ===== 单条操作 =====
+    function deleteOne(id) {
+        if (!confirm('确定删除这条记忆吗？此操作不可恢复。')) return;
+        fetch('/api/memory/' + id, {method:'DELETE'}).then(function(r){return r.json()}).then(function(d) {
+            if (d.status === 'deleted') { loadList(); loadStats(); }
+            else alert('删除失败');
+        }).catch(function(err){alert('删除失败: ' + err.message)});
+    }
+
+    function doArchive() {
+        if (!confirm('归档所有保留率低于 0.15 的记忆？')) return;
+        fetch('/api/memory/archive?threshold=0.15', {method:'POST'}).then(function(r){return r.json()}).then(function(d) {
+            alert('已归档 ' + d.archived_count + ' 条记忆');
+            loadList(); loadStats();
+        }).catch(function(err){alert('归档失败: ' + err.message)});
+    }
+
+    // ===== 详情面板 =====
+    function showDetail(id) {
+        var body = document.getElementById('detailBody');
+        body.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary spinner-border-sm me-2"></div><span class="text-muted">加载中...</span></div>';
+        var panel = new bootstrap.Offcanvas(document.getElementById('detailPanel'));
+        panel.show();
+
+        fetch('/api/memory/' + id).then(function(r){return r.json()}).then(function(m) {
+            if (m.detail) { body.innerHTML = '<div class="alert alert-danger">' + esc(m.detail) + '</div>'; return; }
+            var lvBadge = ({session:'bg-primary',user:'bg-success',team:'bg-warning text-dark',project:'bg-danger'}[m.level]||'bg-secondary');
+            var retClass = m.retention < 0.15 ? 'danger' : m.retention < 0.3 ? 'warning' : 'success';
+
+            body.innerHTML = '<div class="mb-4"><div class="d-flex justify-content-between align-items-start mb-3">' +
+                '<span class="badge ' + lvBadge + ' fs-6">' + m.level.toUpperCase() + '</span><div>' +
+                (m.is_archived
+                    ? '<button class="btn btn-sm btn-outline-info me-1" onclick="panelUnarchive(\'' + m.memory_id + '\')"><i class="bi bi-unarchive"></i> 恢复</button>'
+                    : '<button class="btn btn-sm btn-outline-warning me-1" onclick="panelArchive(\'' + m.memory_id + '\')"><i class="bi bi-archive"></i> 归档</button>') +
+                '<button class="btn btn-sm btn-outline-secondary" onclick="showEdit(\'' + m.memory_id + '\')"><i class="bi bi-pencil"></i> 编辑</button>' +
+                '<button class="btn btn-sm btn-outline-danger" onclick="deleteOne(\'' + m.memory_id + '\')"><i class="bi bi-trash"></i></button></div></div>' +
+
+                '<div class="card bg-light mb-3"><div class="card-body py-2 px-3"><div class="row text-center">' +
+                '<div class="col-4 border-end"><div class="text-muted small">保留率</div><div class="fw-bold fs-5 text-' + retClass + '">' + (m.retention*100).toFixed(1) + '%</div></div>' +
+                '<div class="col-4 border-end"><div class="text-muted small">访问次数</div><div class="fw-bold fs-5">' + m.access_count + '</div></div>' +
+                '<div class="col-4"><div class="text-muted small">已归档</div><div class="fw-bold fs-5">' + (m.is_archived ? '是' : '否') + '</div></div></div></div></div>' +
+
+                '<table class="table table-sm table-borderless mb-3"><tr><td class="text-muted" style="width:80px">ID</td><td><code class="small">' + esc(m.memory_id) + '</code></td></tr>' +
+                '<tr><td class="text-muted">作用域</td><td>' + esc(m.scope_id) + '</td></tr>' +
+                '<tr><td class="text-muted">创建时间</td><td><small>' + formatDate(m.created_at) + '</small></td></tr>' +
+                '<tr><td class="text-muted">最后访问</td><td><small>' + formatDate(m.last_accessed_at) + '</small></td></tr></table>' +
+
+                '<h6 class="fw-bold"><i class="bi bi-text-paragraph me-1"></i>内容</h6>' +
+                '<div class="p-3 bg-light rounded mb-3" style="max-height:300px;overflow-y:auto;white-space:pre-wrap;font-size:0.9rem">' + esc(m.content) + '</div>' +
+                (m.summary ? '<h6 class="fw-bold"><i class="bi bi-compass me-1"></i>摘要</h6><p class="text-muted small">' + esc(m.summary) + '</p>' : '') +
+                '<h6 class="fw-bold"><i class="bi bi-code me-1"></i>元数据</h6>' +
+                '<pre class="p-2 bg-dark text-light rounded small" style="max-height:150px;overflow-y:auto">' + esc(JSON.stringify(m.metadata || {}, null, 2)) + '</pre></div>';
+        }).catch(function(err) {
+            body.innerHTML = '<div class="alert alert-danger">加载失败: ' + esc(err.message) + '</div>';
+        });
+    }
+
+    function panelArchive(id) { fetch('/api/memory/archive?id=' + id, {method:'POST'}).then(function(){showDetail(id);loadList();loadStats()}).catch(function(){}); }
+    function panelUnarchive(id) { fetch('/api/memory/unarchive/' + id, {method:'POST'}).then(function(){showDetail(id);loadList();loadStats()}).catch(function(){}); }
+
+    // ===== 作用域联动 =====
+    var SCOPE_CONFIG = {
+        session: {placeholder:'输入会话 ID，如: conv_abc123', help:'当前对话或会话的唯一标识', type:'input', default:''},
+        user: {placeholder:'输入用户 ID，如: user_001', help:'用户的唯一标识，可在路由分析页面查看', type:'input', default:''},
+        team: {placeholder:'选择一个团队', help:'从现有 Squad 中选择，也可手动输入其他团队 ID', type:'dropdown', default:'', api:'/api/squads', valueKey:'squad_id', labelKey:'name'},
+        project: {placeholder:'', help:'当前项目固定为 sivan', type:'fixed', default:'sivan'}
+    };
+
+    function updateScopeField() {
+        var level = document.getElementById('storeLevel').value;
+        var cfg = SCOPE_CONFIG[level] || SCOPE_CONFIG.session;
+        var container = document.getElementById('scopeFieldContainer');
+
+        if (cfg.type === 'fixed') {
+            container.innerHTML = '<input type="text" class="form-control" id="storeScope" value="' + cfg.default + '" readonly required>';
+            document.getElementById('scopeHelpText').textContent = cfg.help;
+            return;
+        }
+
+        if (cfg.type === 'dropdown') {
+            container.innerHTML = '<div class="d-flex gap-2">' +
+                '<select class="form-select" id="storeScope" required><option value="">-- 选择或输入 --</option></select>' +
+                '<input type="text" class="form-control d-none" id="storeScopeCustom" style="width:150px" placeholder="自定义 ID">' +
+                '<button type="button" class="btn btn-sm btn-outline-secondary" id="scopeToggleBtn" onclick="toggleScopeInput()" title="切换为手动输入"><i class="bi bi-pencil"></i></button></div>';
+            document.getElementById('scopeHelpText').textContent = cfg.help;
+
+            fetch(cfg.api).then(function(r){return r.json()}).then(function(data) {
+                var sel = document.getElementById('storeScope');
+                var items = Array.isArray(data) ? data : (data.squads || data.data || []);
+                items.forEach(function(item) {
+                    var val = item[cfg.valueKey] || item.id || item.squad_id || '';
+                    var label = item[cfg.labelKey] || item.name || val;
+                    if (val) { var opt = document.createElement('option'); opt.value = val; opt.textContent = label + ' (' + val + ')'; sel.appendChild(opt); }
+                });
+            }).catch(function() {
+                document.getElementById('storeScope').outerHTML = '<input type="text" class="form-control" id="storeScope" placeholder="' + cfg.placeholder + '" required>';
+            });
+            return;
+        }
+
+        container.innerHTML = '<input type="text" class="form-control" id="storeScope" placeholder="' + cfg.placeholder + '" required>';
+        document.getElementById('scopeHelpText').textContent = cfg.help;
+    }
+
+    function toggleScopeInput() {
+        var sel = document.getElementById('storeScope');
+        var custom = document.getElementById('storeScopeCustom');
+        var btn = document.getElementById('scopeToggleBtn');
+        if (sel && custom) {
+            if (sel.tagName === 'SELECT') {
+                sel.classList.add('d-none'); custom.classList.remove('d-none'); custom.value = '';
+                btn.innerHTML = '<i class="bi bi-list"></i>'; btn.title = '切换为下拉选择';
+            } else {
+                sel.classList.remove('d-none'); custom.classList.add('d-none');
+                btn.innerHTML = '<i class="bi bi-pencil"></i>'; btn.title = '切换为手动输入';
+            }
+        }
+    }
+
+    function getScopeValue() {
+        var sel = document.getElementById('storeScope');
+        if (!sel) return '';
+        if (sel.tagName === 'SELECT') {
+            if (sel.value) return sel.value;
+            var custom = document.getElementById('storeScopeCustom');
+            return custom && !custom.classList.contains('d-none') ? custom.value.trim() : '';
+        }
+        return sel.value.trim();
+    }
+
+    function showStoreModal() {
+        document.getElementById('storeForm').reset();
+        document.getElementById('storeLevel').value = 'session';
+        document.getElementById('storeMetadata').value = '{"source": "manual"}';
+        updateScopeField();
+        new bootstrap.Modal(document.getElementById('storeModal')).show();
+    }
+
+    function submitStore() {
+        var scopeId = getScopeValue();
+        var content = document.getElementById('storeContent').value.trim();
+        if (!scopeId) { alert('请输入作用域 ID'); return; }
+        if (!content) { alert('请输入记忆内容'); return; }
+
+        var metadata = {};
+        var metaStr = document.getElementById('storeMetadata').value.trim();
+        if (metaStr) { try { metadata = JSON.parse(metaStr); } catch(e) { alert('元数据格式错误，请输入有效 JSON'); return; } }
+
+        var btn = document.getElementById('storeSubmitBtn');
+        btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 保存中...';
+
+        fetch('/api/memory', {method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({content:content, level:document.getElementById('storeLevel').value, scope_id:scopeId, metadata:metadata})})
+            .then(function(r){return r.json()}).then(function(data) {
+                if (data.memory_id) { bootstrap.Modal.getInstance(document.getElementById('storeModal')).hide(); loadList(); loadStats(); }
+                else alert('保存失败');
+            }).catch(function(err){alert('保存失败: ' + err.message)})
+            .finally(function(){ btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i> 保存'; });
+    }
+
+    // ===== 编辑 =====
+    function showEdit(id) {
+        var body = document.getElementById('editModal').querySelector('.modal-body');
+        body.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm me-2"></div><span class="text-muted">加载中...</span></div>';
+        new bootstrap.Modal(document.getElementById('editModal')).show();
+
+        fetch('/api/memory/' + id).then(function(r){return r.json()}).then(function(m) {
+            if (m.detail) { body.innerHTML = '<div class="alert alert-danger">' + esc(m.detail) + '</div>'; return; }
+            body.innerHTML = '<form id="editForm" onsubmit="event.preventDefault();submitEdit()">' +
+                '<input type="hidden" id="editId" value="' + esc(m.memory_id) + '">' +
+                '<div class="mb-3"><label class="form-label fw-bold">内容</label><textarea class="form-control" id="editContent" rows="6" required>' + esc(m.content) + '</textarea></div>' +
+                '<div class="mb-3"><label class="form-label fw-bold">元数据 <small class="text-muted">(JSON)</small></label>' +
+                '<textarea class="form-control font-monospace" id="editMetadata" rows="3">' + esc(JSON.stringify(m.metadata||{}, null, 2)) + '</textarea></div></form>';
+        }).catch(function(err) {
+            body.innerHTML = '<div class="alert alert-danger">加载失败: ' + esc(err.message) + '</div>';
+        });
+    }
+
+    function submitEdit() {
+        var id = document.getElementById('editId').value;
+        var content = document.getElementById('editContent').value.trim();
+        if (!content) { alert('内容不能为空'); return; }
+        var metadata;
+        try { metadata = JSON.parse(document.getElementById('editMetadata').value.trim()||'{}'); } catch(e) { alert('元数据格式错误'); return; }
+
+        var btn = document.getElementById('editSubmitBtn');
+        btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 保存中...';
+
+        fetch('/api/memory/' + id, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content:content, metadata:metadata})})
+            .then(function(r){return r.json()}).then(function(data) {
+                if (data.memory_id) { bootstrap.Modal.getInstance(document.getElementById('editModal')).hide(); loadList(); loadStats(); }
+                else alert('更新失败');
+            }).catch(function(err){alert('更新失败: ' + err.message)})
+            .finally(function(){ btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i> 保存'; });
+    }
+
+    // ===== 语义搜索 =====
+    function showSearchModal() {
+        document.getElementById('searchQuery').value = '';
+        document.getElementById('searchResults').innerHTML = '<div class="text-center py-5 text-muted"><i class="bi bi-search fs-1 d-block mb-2"></i><span>输入关键词开始语义搜索</span></div>';
+        document.getElementById('searchResultCount').textContent = '';
+        new bootstrap.Modal(document.getElementById('searchModal')).show();
+        setTimeout(function(){document.getElementById('searchQuery').focus()}, 300);
+    }
+
+    function doSearch() {
+        var query = document.getElementById('searchQuery').value.trim();
+        if (!query) { alert('请输入搜索文本'); return; }
+        var payload = {
+            query_text: query,
+            level: document.getElementById('searchLevel').value || null,
+            scope_id: document.getElementById('searchScope').value.trim() || null,
+            limit: parseInt(document.getElementById('searchLimit').value) || 10,
+            include_archived: true
+        };
+        var resDiv = document.getElementById('searchResults');
+        resDiv.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm me-2"></div><span class="text-muted">语义搜索中...</span></div>';
+
+        fetch('/api/memory/search', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+            .then(function(r){return r.json()}).then(function(data) {
+                if (!data || data.length === 0) {
+                    resDiv.innerHTML = '<div class="text-center py-5 text-muted"><i class="bi bi-search fs-1 d-block mb-2"></i><span>未找到匹配的记忆</span></div>';
+                    document.getElementById('searchResultCount').textContent = '0 条结果';
+                    return;
+                }
+                document.getElementById('searchResultCount').textContent = data.length + ' 条结果';
+                resDiv.innerHTML = data.map(function(m) {
+                    var lvBadge = ({session:'bg-primary',user:'bg-success',team:'bg-warning text-dark',project:'bg-danger'}[m.level]||'bg-secondary');
+                    var retClass = m.retention < 0.15 ? 'danger' : m.retention < 0.3 ? 'warning' : 'success';
+                    return '<div class="card mb-2 search-result"><div class="card-body py-2 px-3">' +
+                        '<div class="d-flex justify-content-between align-items-start">' +
+                        '<div class="d-flex gap-2 align-items-center">' +
+                        '<span class="badge ' + lvBadge + '">' + m.level + '</span>' +
+                        '<small class="text-muted">' + esc(m.scope_id) + '</small>' +
+                        '<span class="badge bg-' + retClass + '">' + (m.retention * 100).toFixed(1) + '%</span>' +
+                        (m.is_archived ? '<span class="badge bg-secondary">归档</span>' : '') + '</div>' +
+                        '<button class="btn btn-sm btn-outline-primary" onclick="bootstrap.Modal.getInstance(document.getElementById(\'searchModal\')).hide();showDetail(\'' + m.memory_id + '\')"><i class="bi bi-eye"></i></button></div>' +
+                        '<p class="mb-0 mt-1">' + highlightText(esc((m.content||'').substring(0, 200)), query) + ((m.content||'').length > 200 ? '...' : '') + '</p></div></div>';
+                }).join('');
+            }).catch(function(err) {
+                resDiv.innerHTML = '<div class="alert alert-danger">搜索失败: ' + esc(err.message) + '</div>';
+                document.getElementById('searchResultCount').textContent = '搜索失败';
+            });
+    }
+
+    function highlightText(text, query) {
+        if (!query) return text;
+        var words = query.split(/\s+/).filter(function(w){return w.length > 1});
+        var result = text;
+        words.forEach(function(w) {
+            try { result = result.replace(new RegExp('(' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi'), '<mark>$1</mark>'); } catch(e) {}
+        });
+        return result;
+    }
+
+    // ===== 保留率概览 =====
+    function loadRetentionStatus() {
+        var body = document.getElementById('retentionBody');
+        body.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary spinner-border-sm me-2"></div><span class="text-muted">加载中...</span></div>';
+        new bootstrap.Modal(document.getElementById('retentionModal')).show();
+
+        var levels = ['session', 'user', 'team', 'project'];
+        var labels = {session:'Session (1h)', user:'User (24h)', team:'Team (7d)', project:'Project (30d)'};
+        var colors = {session:'#4e73df', user:'#1cc88a', team:'#f6c23e', project:'#e74a3b'};
+
+        Promise.all(levels.map(function(l) { return fetch('/api/memory/retention/level/' + l).then(function(r){return r.json()}); }))
+            .then(function(results) {
+                var html = '<div class="row">';
+                levels.forEach(function(level, i) {
+                    var items = results[i] || [];
+                    var high = items.filter(function(x){return x.retention >= 0.3}).length;
+                    var mid = items.filter(function(x){return x.retention >= 0.15 && x.retention < 0.3}).length;
+                    var low = items.filter(function(x){return x.retention < 0.15}).length;
+                    var avg = items.length ? items.reduce(function(s,x){return s+x.retention}, 0) / items.length * 100 : 0;
+
+                    html += '<div class="col-md-6 mb-3"><div class="card h-100">' +
+                        '<div class="card-header py-2 d-flex justify-content-between align-items-center">' +
+                        '<span style="color:' + colors[level] + '"><i class="bi bi-circle-fill me-1"></i>' + labels[level] + '</span>' +
+                        '<span class="badge bg-secondary">' + items.length + ' 条</span></div>' +
+                        '<div class="card-body py-3"><div class="d-flex justify-content-between small mb-1">' +
+                        '<span>平均保留率</span><strong>' + avg.toFixed(1) + '%</strong></div>' +
+                        '<div class="progress mb-3" style="height:8px"><div class="progress-bar" style="width:' + avg + '%;background:' + colors[level] + '"></div></div>' +
+                        '<div class="d-flex justify-content-between small text-muted">' +
+                        '<span><span class="badge bg-success" style="font-size:10px">' + high + '</span> 健康</span>' +
+                        '<span><span class="badge bg-warning text-dark" style="font-size:10px">' + mid + '</span> 低</span>' +
+                        '<span><span class="badge bg-danger" style="font-size:10px">' + low + '</span> 濒临归档</span></div>' +
+                        (items.length > 0 ? '<div class="mt-2 small text-muted" style="max-height:120px;overflow-y:auto">' +
+                            items.slice(0, 10).map(function(x) {
+                                var c = x.retention < 0.15 ? '#dc3545' : x.retention < 0.3 ? '#ffc107' : '#198754';
+                                return '<div class="d-flex justify-content-between py-1 border-bottom"><span>' + esc(x.content_preview||'') + '</span><span style="color:' + c + '">' + (x.retention*100).toFixed(1) + '%</span></div>';
+                            }).join('') + '</div>' : '<div class="text-center text-muted small mt-2">暂无数据</div>') +
+                        '</div></div></div>';
+                });
+                html += '</div>';
+                body.innerHTML = html;
+            }).catch(function(err) {
+                body.innerHTML = '<div class="alert alert-danger">加载失败: ' + esc(err.message) + '</div>';
+            });
+    }
+
+    // ===== 本能模板 =====
+    var instinctLoaded = false;
+
+    function loadInstinctStats() {
+        fetch('/api/instinct-patterns/stats').then(function(r){return r.json()}).then(function(s) {
+            document.getElementById('instStatTotal').textContent = s.total || 0;
+            document.getElementById('instStatActive').textContent = s.active || 0;
+            var byType = s.by_type || {};
+            var typeStr = Object.keys(byType).map(function(k){return k+':'+byType[k]}).join(' &nbsp;') || '--';
+            document.getElementById('instStatByType').innerHTML = typeStr;
+            document.getElementById('instinctTotalBadge').textContent = s.total || 0;
+        }).catch(function(){});
+    }
+
+    function loadInstinctPatterns() {
+        if (instinctLoaded) return;
+        var tbody = document.getElementById('instinctTableBody');
+        var empty = document.getElementById('instinctEmpty');
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary me-2"></div><span class="text-muted">加载中...</span></td></tr>';
+        empty.style.display = 'none';
+
+        fetch('/api/instinct-patterns?page=1&page_size=100').then(function(r){return r.json()}).then(function(data) {
+            var items = data.items || [];
+            if (items.length === 0) {
+                tbody.innerHTML = '';
+                empty.style.display = '';
+                return;
+            }
+            instinctLoaded = true;
+            document.getElementById('instinctTotalBadge').textContent = data.total || items.length;
+            tbody.innerHTML = items.map(function(p) {
+                var activeBadge = p.is_active ? '<span class="badge bg-success">激活</span>' : '<span class="badge bg-secondary">未激活</span>';
+                var rate = p.total_count > 0 ? (p.success_count / p.total_count * 100).toFixed(1) + '%' : '--';
+                var sig = (p.task_signature || '').substring(0, 60);
+                return '<tr>' +
+                    '<td><span class="badge bg-info">' + esc(p.task_type || '--') + '</span></td>' +
+                    '<td><small class="text-muted" title="' + esc(p.task_signature || '') + '">' + esc(sig) + (sig.length >= 60 ? '...' : '') + '</small></td>' +
+                    '<td class="text-center"><small>' + p.success_count + '/' + p.total_count + ' (' + rate + ')</small></td>' +
+                    '<td class="text-center"><span class="badge bg-' + (p.confidence >= 0.8 ? 'success' : p.confidence >= 0.5 ? 'warning' : 'secondary') + '">' + (p.confidence || 0).toFixed(2) + '</span></td>' +
+                    '<td class="text-center">' + activeBadge + '</td>' +
+                    '<td class="text-center"><div class="btn-group btn-group-sm">' +
+                    '<button class="btn btn-sm btn-outline-' + (p.is_active ? 'warning' : 'success') + '" onclick="toggleInstinct(\'' + p.pattern_id + '\')" title="' + (p.is_active ? '停用' : '激活') + '"><i class="bi bi-' + (p.is_active ? 'pause' : 'play') + '"></i></button>' +
+                    '<button class="btn btn-sm btn-outline-danger" onclick="deleteInstinct(\'' + p.pattern_id + '\')" title="删除"><i class="bi bi-trash"></i></button>' +
+                    '</div></td></tr>';
+            }).join('');
+        }).catch(function(err) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4"><i class="bi bi-exclamation-triangle me-2"></i>' + esc(err.message) + '</td></tr>';
+        });
+    }
+
+    function toggleInstinct(patternId) {
+        fetch('/api/instinct-patterns/' + patternId + '/toggle-active', {method:'POST'})
+            .then(function(r){return r.json()}).then(function(d) {
+                if (d.pattern_id) { loadInstinctPatterns(); loadInstinctStats(); }
+                else alert('操作失败');
+            }).catch(function(err){alert('操作失败: ' + err.message)});
+    }
+
+    function deleteInstinct(patternId) {
+        if (!confirm('确定要删除这个本能模板吗？')) return;
+        fetch('/api/instinct-patterns/' + patternId, {method:'DELETE'})
+            .then(function(r){return r.json()}).then(function(d) {
+                if (d.status === 'deleted') { instinctLoaded = false; loadInstinctPatterns(); loadInstinctStats(); }
+                else alert('删除失败');
+            }).catch(function(err){alert('删除失败: ' + err.message)});
+    }
+
+    // ===== 初始化 =====
+    document.addEventListener('DOMContentLoaded', function() {
+        loadStats(); applyFilters(); loadInstinctStats();
+        var collapseEl = document.getElementById('instinctCollapse');
+        collapseEl.addEventListener('shown.bs.collapse', function() { loadInstinctPatterns(); });
+    });
+</script>
+{% endblock %}

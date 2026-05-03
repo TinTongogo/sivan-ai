@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}仪表板{% endblock %}
+{% block page_title %}<i class="bi bi-speedometer2"></i> 系统仪表板{% endblock %}
+
+{% block content %}
+<div class="row g-4 mb-4">
+    {% macro stat_card(href, icon, color, value, label, sub) %}
+    <div class="col-md-3 col-6">
+        <a href="{{ href }}" class="text-decoration-none">
+            <div class="stat-card h-100">
+                <div class="stat-icon" style="background:{{ color }}12;color:{{ color }};"><i class="bi {{ icon }}"></i></div>
+                <div class="stat-value" style="color:{{ color }};">{{ value|safe }}</div>
+                <div class="stat-label">{{ label }}</div>
+                <div class="stat-sub">{{ sub }}</div>
+            </div>
+        </a>
+    </div>
+    {% endmacro %}
+    {{ stat_card('/agents', 'bi-robot', '#4361ee', stats.agents.total, '智能体', stats.agents.by_type.core ~ ' 核心 + ' ~ stats.agents.by_type.domain ~ ' 领域') }}
+    {{ stat_card('/skills', 'bi-tools', '#10b981', (stats.skills.total|default(0)|format_number), '技能', '已使用: ' ~ (stats.skills.usage.used_skills|default(0))) }}
+    {{ stat_card('/contracts', 'bi-file-earmark-text', '#f59e0b', stats.contracts.total, '契约', '共 ' ~ (stats.contracts.total|string) ~ ' 个') }}
+    {{ stat_card('/routing', 'bi-diagram-3', '#3b82f6', (stats.routing.total_decisions|format_number), '路由决策', ('成功率: %.1f%%'|format(stats.routing.success_rate * 100))) }}
+    {{ stat_card('/tokens', 'bi-currency-dollar', '#64748b', (stats.tokens.total_tokens|format_number), 'Token使用', ('成本: $%.4f'|format(stats.tokens.total_cost))) }}
+    {{ stat_card('/squads', 'bi-people-fill', '#8b5cf6', (stats.squads.total|default(0)), 'Squad', ('执行: ' ~ (stats.squads.total_executions|default(0)))) }}
+    {{ stat_card('/memory', 'bi-collection', '#ec4899', (stats.memory.total|default(0)|format_number), '记忆', ('已归档: ' ~ (stats.memory.archived|default(0)))) }}
+    {{ stat_card('/knowledge-bases', 'bi-book', '#fb923c', (stats.knowledge_bases.total|default(0)), '知识库', ('对话: ' ~ (stats.conversations.total|default(0)))) }}
+    {{ stat_card('/chat', 'bi-chat-dots', '#ec4899', (stats.conversations.total|default(0)|format_number), '对话', '查看和管理对话记录') }}
+    {{ stat_card('/reports', 'bi-journal-text', '#ef4444', (stats.reports.total|default(0)), '周报', ('提报: ' ~ (stats.squads.total_executions|default(0)|format_number) ~ ' 次执行')) }}
+    {{ stat_card('/logs', 'bi-journal-code', '#64748b', (stats.logs.total|default(0)|format_number), '系统日志', ('追踪: ' ~ (stats.logs.traces|default(0)))) }}
+    {{ stat_card('/settings', 'bi-gear', '#64748b', (stats.settings.settings|default(0)), '系统设置', ('提供商: ' ~ (stats.settings.providers|default(0)))) }}
+</div>
+
+<div class="row g-4 mt-2">
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header"><i class="bi bi-info-circle me-2"></i>系统信息</div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    <tbody>
+                        <tr><td style="width:40%"><strong>系统名称</strong></td><td>{{ stats.system.name }}</td></tr>
+                        <tr><td><strong>系统版本</strong></td><td>{{ stats.system.version }}</td></tr>
+                        <tr><td><strong>系统状态</strong></td><td><span class="badge bg-success">{{ stats.system.status }}</span></td></tr>
+                        <tr><td><strong>架构版本</strong></td><td>基于领域驱动设计</td></tr>
+                        <tr><td><strong>对话总数</strong></td><td>{{ stats.conversations.total|default(0)|format_number }}</td></tr>
+                        <tr><td><strong>日志总数</strong></td><td>{{ stats.logs.total|default(0)|format_number }}（{{ stats.logs.traces|default(0) }} 追踪）</td></tr>
+                        <tr><td><strong>路由策略</strong></td><td>{{ (stats.routing.by_strategy|default({})|length) }} 个策略活跃</td></tr>
+                        <tr><td><strong>Token请求</strong></td><td>{{ (stats.tokens.total_requests|default(0)|format_number) }} 次调用</td></tr>
+                        <tr><td><strong>技能使用</strong></td><td>{{ (stats.skills.usage.used_skills|default(0)) }}/{{ stats.skills.total|default(0) }}（{{ '%.0f'|format(stats.skills.usage.used_skills|default(0) / stats.skills.total * 100) if stats.skills.total > 0 else 0 }}%）</td></tr>
+                        <tr><td><strong>Squad执行</strong></td><td>{{ (stats.squads.total_executions|default(0)|format_number) }} 次（成功率 {{ '%.0f'|format(stats.squads.success_rate|default(0)) }}%）</td></tr>
+                        <tr><td><strong>记忆条目</strong></td><td>{{ (stats.memory.total|default(0)|format_number) }} 条（访问 {{ (stats.memory.total_access_count|default(0)|format_number) }} 次）</td></tr>
+                        <tr><td><strong>数据更新时间</strong></td><td>{{ stats.timestamp|format_date }}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-8">
+        <div class="row g-4">
+            <div class="col-6">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-heart-pulse me-2"></i>系统健康状态</span>
+                        <span class="badge bg-secondary" id="health-uptime">--</span>
+                    </div>
+                    <div class="card-body" id="health-content">
+                        <div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>加载中...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="card h-100">
+                    <div class="card-header py-2"><i class="bi bi-diagram-3 me-1" style="color:#3b82f6;"></i>路由策略分布</div>
+                    <div class="card-body py-3">
+                        {% for strategy, data in (stats.routing.by_strategy|default({})).items() %}
+                        {% set pct = (data.success_rate * 100) %}
+                        <div class="d-flex justify-content-between align-items-center mb-1" style="font-size:0.82rem;">
+                            <span class="text-muted">{{ strategy }}</span>
+                            <span class="fw-600">{{ data.total_decisions }}次</span>
+                        </div>
+                        <div class="progress mb-2" style="height:4px;">
+                            <div class="progress-bar bg-{{ 'success' if pct >= 80 else 'warning' if pct >= 50 else 'danger' }}" style="width:{{ pct }}%;" title="成功率 {{ '%.0f'|format(pct) }}%"></div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="card h-100">
+                    <div class="card-header py-2"><i class="bi bi-currency-dollar me-1" style="color:#f59e0b;"></i>Token模型分布</div>
+                    <div class="card-body py-3">
+                        {% set total_tokens = stats.tokens.total_tokens|default(0) %}
+                        {% for model, data in (stats.tokens.by_model|default({})).items() %}
+                        {% set pct = (data.total_tokens / total_tokens * 100) if total_tokens > 0 else 0 %}
+                        <div class="d-flex justify-content-between align-items-center mb-1" style="font-size:0.82rem;">
+                            <span class="text-muted">{{ model }}</span>
+                            <span class="fw-600">{{ data.total_requests }}次 {{ (data.total_cost|round(4)) }}$</span>
+                        </div>
+                        {% if pct > 0 %}<div class="progress mb-2" style="height:4px;"><div class="progress-bar" style="width:{{ pct|round }}%;"></div></div>{% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="card h-100">
+                    <div class="card-header py-2"><i class="bi bi-file-earmark-text me-1" style="color:#f59e0b;"></i>契约状态分布</div>
+                    <div class="card-body py-3">
+                        {% for status, count in (stats.contracts.by_status|default({})).items() %}
+                        {% set pct = (count / stats.contracts.total * 100) if stats.contracts.total > 0 else 0 %}
+                        {% set badge_cls = 'success' if status == 'approved' else 'warning' if status == 'draft' else 'info' if status == 'reviewed' else 'secondary' %}
+                        <div class="d-flex justify-content-between align-items-center mb-1" style="font-size:0.82rem;">
+                            <span class="text-muted"><span class="badge bg-{{ badge_cls }}">{{ status }}</span>（{{ count }}）</span>
+                            <span class="fw-600">{{ '%.0f'|format(pct) }}%</span>
+                        </div>
+                        <div class="progress mb-2" style="height:4px;"><div class="progress-bar" style="width:{{ pct|round }}%;"></div></div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mt-2">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-cpu me-2"></i>系统资源</div>
+            <div class="card-body" id="resources-content">
+                <div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>加载中...</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function formatUptime(seconds) {
+    var d = Math.floor(seconds / 86400), h = Math.floor((seconds % 86400) / 3600);
+    var m = Math.floor((seconds % 3600) / 60), s = seconds % 60;
+    return (d ? d + '天' : '') + (h ? h + '时' : '') + (m ? m + '分' : '') + s + '秒';
+}
+
+function loadHealth() {
+    fetch('/api/health').then(function(r){return r.json()}).then(function(data) {
+        document.getElementById('health-uptime').textContent = formatUptime(data.uptime_seconds);
+        function badge(ok) { return '<span class="badge bg-' + (ok ? 'success' : 'danger') + '">' + (ok ? '正常' : '异常') + '</span>'; }
+        document.getElementById('health-content').innerHTML =
+            '<div class="row"><div class="col-6">' +
+            '<div class="mb-3"><strong>数据库连接</strong><span class="float-end">' + badge(data.database === 'connected') + '</span></div>' +
+            '<div class="mb-3"><strong>路由数据库</strong><span class="float-end">' + (data.routing_db === 'connected' ? badge(true) : '<span class="badge bg-secondary">未启用</span>') + '</span></div>' +
+            '<div class="mb-3"><strong>智能体加载</strong><span class="float-end"><span class="badge bg-success">18个</span></span></div></div>' +
+            '<div class="col-6">' +
+            '<div class="mb-3"><strong>服务状态</strong><span class="float-end">' + (data.status === 'ok' ? '<span class="badge bg-success">运行中</span>' : '<span class="badge bg-warning">降级</span>') + '</span></div>' +
+            '<div class="mb-3"><strong>Token跟踪</strong><span class="float-end"><span class="badge bg-success">已启用</span></span></div>' +
+            '<div class="mb-3"><strong>系统版本</strong><span class="float-end"><span class="badge bg-info">' + data.version + '</span></span></div></div></div>';
+    }).catch(function() {
+        document.getElementById('health-content').innerHTML = '<div class="text-center text-danger py-3"><i class="bi bi-exclamation-triangle"></i> 健康检查接口不可用</div>';
+    });
+}
+
+function loadResources() {
+    fetch('/api/system-resources').then(function(r){return r.json()}).then(function(data) {
+        function bar(pct, color) {
+            var p = Math.min(pct, 100);
+            var bg = p > 90 ? 'danger' : p > 75 ? 'warning' : color;
+            return '<div class="progress" style="height:16px"><div class="progress-bar bg-' + bg + '" style="width:' + p + '%">' + p.toFixed(0) + '%</div></div>';
+        }
+        document.getElementById('resources-content').innerHTML =
+            '<div class="row g-3"><div class="col-md-4">' +
+            '<div class="d-flex justify-content-between mb-1"><strong>CPU</strong><span class="text-muted" style="font-size:0.85rem;">' + data.cpu_percent + '% (' + data.cpu_count + '核)</span></div>' + bar(data.cpu_percent, 'primary') + '</div>' +
+            '<div class="col-md-4"><div class="d-flex justify-content-between mb-1"><strong>内存</strong><span class="text-muted" style="font-size:0.85rem;">' + data.memory_used_mb + 'MB / ' + data.memory_total_mb + 'MB</span></div>' + bar(data.memory_percent, 'info') + '</div>' +
+            '<div class="col-md-4"><div class="d-flex justify-content-between mb-1"><strong>磁盘</strong><span class="text-muted" style="font-size:0.85rem;">' + data.disk_used_gb + 'GB / ' + data.disk_total_gb + 'GB</span></div>' + bar(data.disk_percent, 'success') + '</div></div>' +
+            '<div class="mt-2"><small class="text-muted">本进程内存: ' + data.process_memory_mb + 'MB | 更新时间: ' + new Date(data.timestamp).toLocaleString('zh-CN') + '</small></div>';
+    }).catch(function() {
+        document.getElementById('resources-content').innerHTML = '<div class="text-center text-danger py-3"><i class="bi bi-exclamation-triangle"></i> 资源监控接口不可用</div>';
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadHealth();
+    loadResources();
+    setInterval(loadHealth, 30000);
+    setInterval(loadResources, 30000);
+});
+</script>
+{% endblock %}

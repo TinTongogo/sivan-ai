@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+{% block title %}Token统计{% endblock %}
+{% block page_title %}<i class="bi bi-currency-dollar"></i> Token统计{% endblock %}
+
+{% block content %}
+<div class="row g-4 mb-4">
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(67,97,238,0.1);color:#4361ee;"><i class="bi bi-coin"></i></div>
+            <div>
+                <div class="stat-badge-value">{{ token_stats.total.total_tokens|format_number }}</div>
+                <div class="stat-badge-label">总Token数</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(16,185,129,0.1);color:#10b981;"><i class="bi bi-currency-dollar"></i></div>
+            <div>
+                <div class="stat-badge-value">${{ "%.4f"|format(token_stats.total.total_cost) }}</div>
+                <div class="stat-badge-label">总成本</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(59,130,246,0.1);color:#3b82f6;"><i class="bi bi-arrow-left-right"></i></div>
+            <div>
+                <div class="stat-badge-value">{{ token_stats.total.total_requests|format_number }}</div>
+                <div class="stat-badge-label">总请求数</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(245,158,11,0.1);color:#f59e0b;"><i class="bi bi-calculator"></i></div>
+            <div>
+                <div class="stat-badge-value">{{ (token_stats.total.total_tokens / token_stats.total.total_requests if token_stats.total.total_requests > 0 else 0)|int|format_number }}</div>
+                <div class="stat-badge-label">平均Token/请求</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h6>Token使用趋势</h6>
+                <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadTokenTrendData(currentTokenRange)" title="刷新"><i class="bi bi-arrow-repeat"></i></button>
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="confirmDeleteTokenUsage()" title="删除选中时间段数据"><i class="bi bi-trash"></i></button>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-download"></i> 导出</button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="/api/export/tokens?format=csv"><i class="bi bi-filetype-csv me-2"></i>导出 CSV</a></li>
+                            <li><a class="dropdown-item" href="/api/export/tokens?format=json"><i class="bi bi-filetype-json me-2"></i>导出 JSON</a></li>
+                        </ul>
+                    </div>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-outline-primary active" onclick="changeTimeRange('1d', this)">当前</button>
+                        <button type="button" class="btn btn-outline-primary" onclick="changeTimeRange('7d', this)">7天</button>
+                        <button type="button" class="btn btn-outline-primary" onclick="changeTimeRange('30d', this)">30天</button>
+                        <button type="button" class="btn btn-outline-primary" onclick="changeTimeRange('90d', this)">90天</button>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="chart-area"><canvas id="tokenTrendChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header"><h6>按模型统计</h6></div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr><th>模型</th><th>Token数</th><th>成本</th><th>请求数</th><th>平均Token</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for model, stats in token_stats.by_model.items() %}
+                            <tr>
+                                <td><code>{{ model }}</code></td>
+                                <td>{{ stats.total_tokens|format_number }}</td>
+                                <td>${{ "%.4f"|format(stats.total_cost) }}</td>
+                                <td>{{ stats.total_requests|format_number }}</td>
+                                <td>{{ (stats.total_tokens / stats.total_requests if stats.total_requests > 0 else 0)|int|format_number }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header"><h6>按智能体统计</h6></div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr><th>智能体</th><th>Token数</th><th>成本</th><th>请求数</th><th>占比</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for agent, stats in token_stats.by_agent.items() %}
+                            {% set percentage = (stats.total_tokens / token_stats.total.total_tokens * 100) if token_stats.total.total_tokens > 0 else 0 %}
+                            <tr>
+                                <td>{{ agent }}</td>
+                                <td>{{ stats.total_tokens|format_number }}</td>
+                                <td>${{ "%.4f"|format(stats.total_cost) }}</td>
+                                <td>{{ stats.total_requests|format_number }}</td>
+                                <td style="min-width:120px;">
+                                    <div class="progress" style="height:18px;">
+                                        <div class="progress-bar bg-{{ 'success' if percentage < 10 else 'info' if percentage < 30 else 'warning' if percentage < 50 else 'danger' }}" style="width:{{ percentage }}%;font-size:0.7rem;">{{ "%.0f"|format(percentage) }}%</div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mt-2">
+    <div class="col-lg-12">
+        <div class="card">
+            <div class="card-header"><h6>成本分析</h6></div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-lg-6">
+                        <div class="chart-pie"><canvas id="costByModelChart"></canvas></div>
+                        <div class="mt-3 text-center small">
+                            {% for model, stats in token_stats.by_model.items() %}
+                            {% set percentage = (stats.total_cost / token_stats.total.total_cost * 100) if token_stats.total.total_cost > 0 else 0 %}
+                            <span class="me-3"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{{ loop.index0|get_chart_color }};margin-right:4px;"></span>{{ model }} ({{ "%.1f"|format(percentage) }}%)</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="chart-pie"><canvas id="costByAgentChart"></canvas></div>
+                        <div class="mt-3 text-center small">
+                            {% set top_agents = token_stats.by_agent.items()|sort(attribute='1.total_cost', reverse=true) %}
+                            {% for agent, stats in top_agents[:5] %}
+                            {% set percentage = (stats.total_cost / token_stats.total.total_cost * 100) if token_stats.total.total_cost > 0 else 0 %}
+                            <span class="me-3"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{{ loop.index0|get_chart_color }};margin-right:4px;"></span>{{ agent }} ({{ "%.1f"|format(percentage) }}%)</span>
+                            {% endfor %}
+                            {% if token_stats.by_agent|length > 5 %}
+                            <span class="me-3"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#cbd5e1;margin-right:4px;"></span>其他</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mt-2">
+    <div class="col-lg-12">
+        <div class="card">
+            <div class="card-header"><h6>预算设置</h6></div>
+            <div class="card-body">
+                <form id="budgetForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small">每日预算 ($)</label>
+                            <input type="number" class="form-control" id="dailyBudget" value="{{ token_stats.budget.daily_budget|default(10.0) }}" step="0.01" min="0">
+                            <div class="form-text">设置每日最大成本预算</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">每月预算 ($)</label>
+                            <input type="number" class="form-control" id="monthlyBudget" value="{{ token_stats.budget.monthly_budget|default(300.0) }}" step="0.01" min="0">
+                            <div class="form-text">设置每月最大成本预算</div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small">告警邮箱</label>
+                            <input type="email" class="form-control" id="alertEmail" value="{{ token_stats.budget.alert_email|default('') }}">
+                            <div class="form-text">预算超限时发送告警邮件</div>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary mt-3">保存设置</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var tokenTrendChart = null;
+var currentTokenRange = '1d';
+
+function changeTimeRange(range, btn) {
+    currentTokenRange = range;
+    btn.closest('.btn-group').querySelectorAll('.btn').forEach(function(b){b.classList.remove('active')});
+    btn.classList.add('active');
+    loadTokenTrendData(range);
+}
+
+function loadTokenTrendData(range) {
+    fetch('/api/token-daily?range=' + range).then(function(r){return r.json()}).then(function(data) {
+        var canvas = document.getElementById('tokenTrendChart');
+        if (!canvas) return;
+        var ctx = canvas.getContext('2d');
+        if (tokenTrendChart) { tokenTrendChart.destroy(); tokenTrendChart = null; }
+        tokenTrendChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.map(function(d){return d.date}),
+                datasets: [
+                    { label: 'Token数', data: data.map(function(d){return d.total_tokens}), borderColor: '#4e73df', backgroundColor: 'rgba(78,115,223,0.05)', yAxisID: 'y', fill: true },
+                    { label: '成本 ($)', data: data.map(function(d){return d.total_cost}), borderColor: '#1cc88a', backgroundColor: 'rgba(28,200,138,0.05)', yAxisID: 'y1', fill: true }
+                ]
+            },
+            options: {
+                maintainAspectRatio: false,
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { type: 'linear', position: 'left', title: { display: true, text: 'Token数' }, beginAtZero: true },
+                    y1: { type: 'linear', position: 'right', title: { display: true, text: '成本 ($)' }, grid: { drawOnChartArea: false } }
+                },
+                plugins: { tooltip: { mode: 'index', intersect: false } }
+            }
+        });
+    }).catch(function(e){console.error('Error loading token trend:', e)});
+}
+
+function confirmDeleteTokenUsage() {
+    var labels = {'1d':'当天 (24小时)', '7d':'近7天', '30d':'近30天', '90d':'近90天'};
+    var label = labels[currentTokenRange] || currentTokenRange;
+    if (!confirm('确认删除 ' + label + ' 的 Token 使用数据？\n\n超过 90 天的旧数据将一并清理。\n此操作不可撤销！')) return;
+    fetch('/api/token-daily?range=' + currentTokenRange, {method: 'DELETE'})
+    .then(function(r){return r.json()}).then(function(data) {
+        if (data.success) {
+            alert('已删除 ' + data.deleted + ' 条记录');
+            loadTokenTrendData(currentTokenRange);
+        } else {
+            alert('删除失败: ' + (data.error || '未知错误'));
+        }
+    }).catch(function(err){alert('删除失败: ' + err.message)});
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadTokenTrendData('1d');
+
+    // Model cost chart
+    var modelLabels = [], modelValues = [], modelColors = [];
+    {% for model, stats in token_stats.by_model.items() %}
+        modelLabels.push('{{ model }}');
+        modelValues.push({{ stats.total_cost }});
+        modelColors.push('{{ loop.index0|get_chart_color }}');
+    {% endfor %}
+    new Chart(document.getElementById('costByModelChart'), {
+        type: 'doughnut',
+        data: { labels: modelLabels, datasets: [{ data: modelValues, backgroundColor: modelColors, hoverBorderColor: 'rgba(234,236,244,1)' }] },
+        options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: {
+            callbacks: { label: function(ctx) { var total = ctx.dataset.data.reduce(function(a,b){return a+b},0); return ctx.label + ': $' + ctx.raw.toFixed(4) + ' (' + Math.round(ctx.raw/total*100) + '%)'; } }
+        }}, cutout: '70%' }
+    });
+
+    // Agent cost chart
+    var agentLabels = [], agentValues = [], agentColors = [];
+    {% set all_agents = token_stats.by_agent.items()|sort(attribute='1.total_cost', reverse=true) %}
+    {% set top_agents = all_agents[:5] %}
+    {% for agent, stats in top_agents %}
+        agentLabels.push('{{ agent }}');
+        agentValues.push({{ stats.total_cost }});
+        agentColors.push('{{ loop.index0|get_chart_color }}');
+    {% endfor %}
+    new Chart(document.getElementById('costByAgentChart'), {
+        type: 'doughnut',
+        data: { labels: agentLabels, datasets: [{ data: agentValues, backgroundColor: agentColors, hoverBorderColor: 'rgba(234,236,244,1)' }] },
+        options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: {
+            callbacks: { label: function(ctx) { var total = ctx.dataset.data.reduce(function(a,b){return a+b},0); return ctx.label + ': $' + ctx.raw.toFixed(4) + ' (' + Math.round(ctx.raw/total*100) + '%)'; } }
+        }}, cutout: '70%' }
+    });
+
+    // Budget form
+    document.getElementById('budgetForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        fetch('/api/token-budget', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                daily_budget: parseFloat(document.getElementById('dailyBudget').value),
+                monthly_budget: parseFloat(document.getElementById('monthlyBudget').value),
+                alert_email: document.getElementById('alertEmail').value
+            })
+        }).then(function(r){return r.json()}).then(function(data) {
+            if (data.success) alert('预算设置已保存');
+            else alert('保存失败: ' + (data.error || '未知错误'));
+        }).catch(function(err){alert('保存失败: ' + err.message)});
+    });
+});
+</script>
+{% endblock %}

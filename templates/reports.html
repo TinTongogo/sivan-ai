@@ -1,0 +1,740 @@
+{% extends "base.html" %}
+
+{% block title %}周报管理{% endblock %}
+{% block page_title %}<i class="bi bi-file-earmark-text"></i> 周报管理{% endblock %}
+
+{% block extra_css %}
+<style>
+    .report-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 10px 10px 0 0;
+    }
+    .insight-card {
+        background: #f8f9fa;
+        border-left: 4px solid #0d6efd;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-radius: 0 5px 5px 0;
+    }
+    .subscription-card {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        color: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .timeline {
+        position: relative;
+        padding-left: 30px;
+    }
+    .timeline::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background-color: #dee2e6;
+    }
+    .timeline-item {
+        position: relative;
+        margin-bottom: 20px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #eee;
+    }
+    .timeline-item:last-child {
+        border-bottom: none;
+    }
+    .timeline-item::before {
+        content: '';
+        position: absolute;
+        left: -34px;
+        top: 5px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background-color: #6c757d;
+        border: 2px solid white;
+    }
+    .timeline-item.published::before {
+        background-color: #28a745;
+    }
+    .timeline-item.generated::before {
+        background-color: #0d6efd;
+    }
+    .chart-mini {
+        height: 60px;
+        margin: 10px 0;
+    }
+/* ── Dark Mode ── */
+body.dark-mode .report-card { background: var(--surface); }
+body.dark-mode .report-card:hover { box-shadow: 0 4px 24px rgba(0,0,0,0.4); }
+body.dark-mode .report-header { border-bottom-color: var(--border); }</style>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <!-- 左侧控制面板 -->
+    <div class="col-lg-3">
+        <!-- 快速生成周报 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-lightning"></i> 快速生成</h6>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-primary" onclick="generateWeeklyReport()">
+                        <i class="bi bi-file-earmark-text"></i> 生成本周周报
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="showCustomReportModal()">
+                        <i class="bi bi-calendar-range"></i> 自定义时间段
+                    </button>
+                </div>
+                <div class="mt-3">
+                    <small class="text-muted">
+                        <i class="bi bi-info-circle"></i>
+                        周报将分析系统性能、Token使用、Squad执行等数据
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <!-- 报告订阅 -->
+        <div class="subscription-card">
+            <h6><i class="bi bi-bell"></i> 报告订阅</h6>
+            <p class="small">自动接收定期报告到邮箱</p>
+            <div class="mt-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="subscribeWeekly" checked>
+                    <label class="form-check-label" for="subscribeWeekly">每周报告</label>
+                </div>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="subscribeMonthly">
+                    <label class="form-check-label" for="subscribeMonthly">每月报告</label>
+                </div>
+            </div>
+            <div class="input-group mt-3">
+                <input type="email" class="form-control" placeholder="邮箱地址" id="subscribeEmail">
+                <button class="btn btn-light" onclick="subscribeReport()"><i class="bi bi-check"></i></button>
+            </div>
+        </div>
+
+        <!-- 报告统计 -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-bar-chart"></i> 报告统计</h6>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-2">
+                    <span>总报告数:</span>
+                    <strong id="totalReports">0</strong>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>已发布:</span>
+                    <strong id="publishedReports">0</strong>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span>本周生成:</span>
+                    <strong id="thisWeekReports">0</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- 时间线 -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-clock-history"></i> 最近活动</h6>
+            </div>
+            <div class="card-body">
+                <div class="timeline" id="recentActivity">
+                    <div class="timeline-item generated">
+                        <div class="small">刚刚</div>
+                        <div>生成本周周报</div>
+                    </div>
+                    <div class="timeline-item published">
+                        <div class="small">2天前</div>
+                        <div>发布上周周报</div>
+                    </div>
+                    <div class="timeline-item">
+                        <div class="small">1周前</div>
+                        <div>生成系统性能报告</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧报告列表 -->
+    <div class="col-lg-9">
+        <!-- 报告列表标题 -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h4 class="mb-0"><i class="bi bi-file-earmark-text"></i> 系统报告</h4>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-primary" onclick="filterReports('all')">全部</button>
+                <button class="btn btn-outline-primary" onclick="filterReports('weekly')">周报</button>
+                <button class="btn btn-outline-success" onclick="filterReports('monthly')">月报</button>
+                <button class="btn btn-outline-warning" onclick="filterReports('published')">已发布</button>
+            </div>
+        </div>
+
+        <!-- 报告列表 -->
+        <div id="reportsContainer">
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+                <p class="mt-3 text-muted">正在加载报告...</p>
+            </div>
+        </div>
+
+        <!-- 报告分页 -->
+        <div class="d-flex justify-content-between align-items-center mt-3 px-3">
+            <div class="text-muted small">共 <span id="reportTotal">0</span> 个报告</div>
+            <nav><ul class="pagination pagination-sm mb-0" id="reportsPagination"></ul></nav>
+        </div>
+    </div>
+</div>
+
+<!-- 报告详情模态框 -->
+<div class="modal fade" id="reportDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">报告详情</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="reportDetailContent">
+                <!-- 内容由JavaScript动态加载 -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" onclick="downloadReport()"><i class="bi bi-download"></i> 下载PDF</button>
+                <button type="button" class="btn btn-success" onclick="publishReport()"><i class="bi bi-send"></i> 发布报告</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 自定义报告模态框 -->
+<div class="modal fade" id="customReportModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">自定义报告</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="customReportForm">
+                    <div class="mb-3">
+                        <label class="form-label">报告类型</label>
+                        <select class="form-select" id="reportType">
+                            <option value="weekly">周报</option>
+                            <option value="monthly">月报</option>
+                            <option value="quarterly">季报</option>
+                            <option value="custom">自定义分析</option>
+                        </select>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">开始日期</label>
+                            <input type="date" class="form-control" id="startDate" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">结束日期</label>
+                            <input type="date" class="form-control" id="endDate" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">报告标题</label>
+                        <input type="text" class="form-control" id="reportTitle" placeholder="例如：2024年第15周系统性能报告">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">分析重点</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="focusPerformance" checked>
+                            <label class="form-check-label" for="focusPerformance">系统性能</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="focusTokens" checked>
+                            <label class="form-check-label" for="focusTokens">Token使用</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="focusSquads" checked>
+                            <label class="form-check-label" for="focusSquads">Squad执行</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="focusRouting">
+                            <label class="form-check-label" for="focusRouting">路由分析</label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="generateCustomReport()"><i class="bi bi-magic"></i> 生成报告</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var currentReports = [];
+var currentReportId = null;
+var reportCurrentPage = 1;
+var reportFilter = 'all';
+var REPORT_PAGE_SIZE = 4;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadReports();
+    updateStats();
+    setupDateDefaults();
+});
+
+function setupDateDefaults() {
+    var today = new Date();
+    var lastWeek = new Date(today);
+    lastWeek.setDate(today.getDate() - 7);
+    document.getElementById('startDate').value = lastWeek.toISOString().split('T')[0];
+    document.getElementById('endDate').value = today.toISOString().split('T')[0];
+}
+
+function loadReports() {
+    fetch('/api/weekly-reports?limit=20')
+        .then(function(response) { return response.json(); })
+        .then(function(reports) {
+            currentReports = reports;
+            renderReports(reports);
+            updateStats();
+        })
+        .catch(function(error) {
+            console.error('Error loading reports:', error);
+            document.getElementById('reportsContainer').innerHTML =
+                '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> 加载报告失败</div>';
+        });
+}
+
+function renderReports(reports) {
+    currentReports = reports;
+    reportCurrentPage = 1;
+    reportFilter = 'all';
+    showReportPage(1);
+}
+
+function getFilteredReports() {
+    if (reportFilter === 'all') return currentReports;
+    return currentReports.filter(function(r) {
+        if (reportFilter === 'weekly' && r.report_type !== 'weekly') return false;
+        if (reportFilter === 'monthly' && r.report_type !== 'monthly') return false;
+        if (reportFilter === 'published' && !r.is_published) return false;
+        return true;
+    });
+}
+
+function showReportPage(page) {
+    var container = document.getElementById('reportsContainer');
+    var filtered = getFilteredReports();
+    var total = filtered.length;
+    var totalPages = Math.ceil(total / REPORT_PAGE_SIZE) || 1;
+
+    document.getElementById('reportTotal').textContent = total;
+
+    if (total === 0) {
+        container.innerHTML =
+            '<div class="text-center py-5"><i class="bi bi-file-earmark-text display-1 text-muted"></i>' +
+            '<h5 class="mt-3">暂无报告</h5><p class="text-muted">还没有生成任何系统报告</p>' +
+            '<button class="btn btn-primary" onclick="generateWeeklyReport()"><i class="bi bi-magic"></i> 生成第一个报告</button></div>';
+        document.getElementById('reportsPagination').innerHTML = '';
+        return;
+    }
+
+    reportCurrentPage = page;
+    var start = (page - 1) * REPORT_PAGE_SIZE;
+    var end = Math.min(start + REPORT_PAGE_SIZE, total);
+    var pageItems = filtered.slice(start, end);
+
+    container.innerHTML = pageItems.map(function(report) {
+        var typeLabel = report.report_type === 'weekly' ? '周报' :
+            report.report_type === 'monthly' ? '月报' :
+            report.report_type === 'quarterly' ? '季报' : '自定义报告';
+        var publishedBadge = report.is_published ?
+            '<span class="badge bg-success ms-2"><i class="bi bi-check-circle"></i> 已发布</span>' : '';
+        var tokensDisplay = report.total_tokens_used ?
+            (report.total_tokens_used / 1000).toFixed(1) + 'K' : '0';
+        var costDisplay = report.total_cost_usd ? report.total_cost_usd.toFixed(2) : '0.00';
+        var summary = report.summary_markdown ?
+            esc(report.summary_markdown.substring(0, 150)) +
+            (report.summary_markdown.length > 150 ? '...' : '') :
+            '暂无分析内容';
+        var publishBtn = !report.is_published ?
+            '<button class="btn btn-sm btn-outline-success ms-2" onclick="publishReport(\'' +
+            report.report_id + '\')"><i class="bi bi-send"></i> 发布</button>' : '';
+
+        return '<div class="card mb-4 report-item" data-type="' + report.report_type +
+            '" data-published="' + report.is_published + '">' +
+            '<div class="report-header">' +
+            '<div class="d-flex justify-content-between align-items-start">' +
+            '<div><h5 class="mb-1">' + esc(report.report_id) + '</h5>' +
+            '<div class="small">' + report.period_start + ' 至 ' + report.period_end +
+            '<span class="badge bg-light text-dark ms-2">' + typeLabel + '</span>' +
+            publishedBadge + '</div></div>' +
+            '<div class="text-end"><div class="small">生成于</div>' +
+            '<div>' + formatDate(report.generated_at) + '</div></div></div></div>' +
+            '<div class="card-body">' +
+            '<div class="row mb-3">' +
+            '<div class="col-3"><div class="text-center"><div class="h4 mb-0">' + (report.total_executions || 0) +
+            '</div><small class="text-muted">执行次数</small></div></div>' +
+            '<div class="col-3"><div class="text-center"><div class="h4 mb-0">' + (report.successful_executions || 0) +
+            '</div><small class="text-muted">成功执行</small></div></div>' +
+            '<div class="col-3"><div class="text-center"><div class="h4 mb-0">' + tokensDisplay +
+            '</div><small class="text-muted">Token使用</small></div></div>' +
+            '<div class="col-3"><div class="text-center"><div class="h4 mb-0">$' + costDisplay +
+            '</div><small class="text-muted">总成本</small></div></div></div>' +
+            '<div class="insight-card"><div class="small text-muted mb-1"><i class="bi bi-lightbulb"></i> 关键洞察</div><div>' +
+            summary + '</div></div>' +
+            '<div class="d-flex justify-content-between mt-3">' +
+            '<div><button class="btn btn-sm btn-outline-primary" onclick="viewReportDetail(\'' +
+            report.report_id + '\')"><i class="bi bi-eye"></i> 查看详情</button>' + publishBtn + '</div>' +
+            '<div><button class="btn btn-sm btn-outline-secondary" onclick="shareReport(\'' +
+            report.report_id + '\')"><i class="bi bi-share"></i> 分享</button>' +
+            '<button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteReport(\'' +
+            report.report_id + '\')"><i class="bi bi-trash"></i> 删除</button></div></div></div></div>';
+    }).join('');
+
+    renderPagination('reportsPagination', page, totalPages, function(p) { showReportPage(p); });
+}
+
+function filterReports(filter) {
+    reportFilter = filter;
+    showReportPage(1);
+}
+
+function viewReportDetail(reportId) {
+    currentReportId = reportId;
+    fetch('/api/weekly-reports/' + reportId)
+        .then(function(response) { return response.json(); })
+        .then(function(report) {
+            if (report.error) {
+                alert('加载失败: ' + report.error);
+                return;
+            }
+            var typeLabel = report.report_type === 'weekly' ? '周报' :
+                report.report_type === 'monthly' ? '月报' :
+                report.report_type === 'quarterly' ? '季报' : '自定义报告';
+            var summaryContent = report.summary_markdown ?
+                '<div class="report-summary">' + esc(report.summary_markdown) + '</div>' :
+                '<p class="text-muted">暂无摘要内容</p>';
+            var recsContent = report.recommendations_json ?
+                '<ul class="mb-0">' + JSON.parse(report.recommendations_json).map(function(rec) {
+                    return '<li>' + esc(rec) + '</li>';
+                }).join('') + '</ul>' :
+                '<p class="text-muted">暂无改进建议</p>';
+
+            var html =
+                '<div class="report-header mb-4"><h4>' + esc(report.report_id) + '</h4>' +
+                '<div class="d-flex justify-content-between align-items-center">' +
+                '<div><span class="badge bg-light text-dark me-2">' + typeLabel + '</span>' +
+                '<span class="text-white">' + report.period_start + ' 至 ' + report.period_end + '</span></div>' +
+                '<div class="text-white">生成时间: ' + formatDate(report.generated_at) + '</div></div></div>' +
+                '<div class="row">' +
+                '<div class="col-md-4">' +
+                '<div class="card mb-3"><div class="card-header"><h6 class="mb-0"><i class="bi bi-speedometer2"></i> 执行统计</h6></div>' +
+                '<div class="card-body">' +
+                '<div class="d-flex justify-content-between mb-2"><span>总执行次数:</span><strong>' + (report.total_executions || 0) + '</strong></div>' +
+                '<div class="d-flex justify-content-between mb-2"><span>成功执行:</span><strong class="text-success">' + (report.successful_executions || 0) + '</strong></div>' +
+                '<div class="d-flex justify-content-between mb-2"><span>失败执行:</span><strong class="text-danger">' + (report.failed_executions || 0) + '</strong></div>' +
+                '<div class="d-flex justify-content-between"><span>平均时长:</span><strong>' + (report.avg_duration_hours ? report.avg_duration_hours.toFixed(1) + '小时' : 'N/A') + '</strong></div></div></div>' +
+                '<div class="card mb-3"><div class="card-header"><h6 class="mb-0"><i class="bi bi-cash-coin"></i> Token统计</h6></div>' +
+                '<div class="card-body">' +
+                '<div class="d-flex justify-content-between mb-2"><span>总Token数:</span><strong>' + (report.total_tokens_used ? report.total_tokens_used.toLocaleString() : '0') + '</strong></div>' +
+                '<div class="d-flex justify-content-between mb-2"><span>总成本:</span><strong class="text-warning">$' + (report.total_cost_usd ? report.total_cost_usd.toFixed(2) : '0.00') + '</strong></div>' +
+                '<div class="d-flex justify-content-between"><span>日均成本:</span><strong>$' + (report.total_cost_usd ? (report.total_cost_usd / 7).toFixed(2) : '0.00') + '</strong></div></div></div>' +
+                '<div class="card"><div class="card-header"><h6 class="mb-0"><i class="bi bi-diagram-3"></i> 系统统计</h6></div>' +
+                '<div class="card-body">' +
+                '<div class="d-flex justify-content-between mb-2"><span>活跃Squad:</span><strong>' + (report.active_squads || 0) + '</strong></div>' +
+                '<div class="d-flex justify-content-between mb-2"><span>路由成功率:</span><strong>' + (report.routing_success_rate ? (report.routing_success_rate * 100).toFixed(1) + '%' : 'N/A') + '</strong></div>' +
+                '<div class="d-flex justify-content-between"><span>技能使用:</span><strong>' + (report.total_skills_used || 0) + '</strong></div></div></div></div>' +
+                '<div class="col-md-8">' +
+                '<div class="card mb-3"><div class="card-header"><h6 class="mb-0"><i class="bi bi-file-text"></i> 报告摘要</h6></div><div class="card-body">' + summaryContent + '</div></div>' +
+                '<div class="card"><div class="card-header"><h6 class="mb-0"><i class="bi bi-graph-up"></i> 性能趋势</h6></div>' +
+                '<div class="card-body"><div class="row"><div class="col-md-6"><canvas id="performanceChart" class="chart-mini"></canvas></div>' +
+                '<div class="col-md-6"><canvas id="costChart" class="chart-mini"></canvas></div></div>' +
+                '<div class="mt-3"><h6>改进建议:</h6>' + recsContent + '</div></div></div></div></div>';
+
+            document.getElementById('reportDetailContent').innerHTML = html;
+            initReportCharts(report);
+            cleanupModalBackdrop();
+            new bootstrap.Modal(document.getElementById('reportDetailModal')).show();
+        })
+        .catch(function(error) {
+            console.error('Error:', error);
+            alert('加载失败');
+        });
+}
+
+function initReportCharts(report) {
+    var perfCtx = document.getElementById('performanceChart').getContext('2d');
+    new Chart(perfCtx, {
+        type: 'line',
+        data: {
+            labels: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+            datasets: [{
+                label: '执行成功率',
+                data: [85, 88, 90, 92, 91, 89, 93],
+                borderColor: '#28a745',
+                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, max: 100 } }
+        }
+    });
+
+    var costCtx = document.getElementById('costChart').getContext('2d');
+    new Chart(costCtx, {
+        type: 'bar',
+        data: {
+            labels: ['智能体A', '智能体B', '智能体C', '智能体D', '智能体E'],
+            datasets: [{
+                label: 'Token成本',
+                data: [12.5, 8.3, 15.2, 6.7, 10.1],
+                backgroundColor: ['rgba(255,99,132,0.7)', 'rgba(54,162,235,0.7)', 'rgba(255,206,86,0.7)', 'rgba(75,192,192,0.7)', 'rgba(153,102,255,0.7)']
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } }
+        }
+    });
+}
+
+function generateWeeklyReport() {
+    if (confirm('确定要生成本周周报吗？')) {
+        fetch('/api/weekly-reports/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                report_type: 'weekly',
+                period_start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                period_end: new Date().toISOString().split('T')[0]
+            })
+        })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            if (data.success) { loadReports(); }
+            else { alert('生成失败: ' + (data.error || '未知错误')); }
+        })
+        .catch(function(error) {
+            console.error('Error:', error);
+            alert('生成失败');
+        });
+    }
+}
+
+function showCustomReportModal() {
+    cleanupModalBackdrop();
+    new bootstrap.Modal(document.getElementById('customReportModal')).show();
+}
+
+function generateCustomReport() {
+    var form = document.getElementById('customReportForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+    var reportData = {
+        report_type: document.getElementById('reportType').value,
+        period_start: document.getElementById('startDate').value,
+        period_end: document.getElementById('endDate').value,
+        report_title: document.getElementById('reportTitle').value || '自定义报告',
+        focus_areas: {
+            performance: document.getElementById('focusPerformance').checked,
+            tokens: document.getElementById('focusTokens').checked,
+            squads: document.getElementById('focusSquads').checked,
+            routing: document.getElementById('focusRouting').checked
+        }
+    };
+    fetch('/api/weekly-reports/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reportData)
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+        if (data.success) {
+            alert('报告生成成功');
+            var modal = bootstrap.Modal.getInstance(document.getElementById('customReportModal'));
+            if (modal) modal.hide();
+            loadReports();
+        } else {
+            alert('生成失败: ' + (data.error || '未知错误'));
+        }
+    })
+    .catch(function(error) {
+        console.error('Error:', error);
+        alert('生成失败');
+    });
+}
+
+function publishReport(reportId) {
+    if (!reportId) reportId = currentReportId;
+    if (!reportId) return;
+    if (!confirm('确定要发布此报告吗？发布后报告将不可编辑。')) return;
+    fetch('/api/weekly-reports/' + reportId + '/publish', { method: 'POST' })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            if (data.success) {
+                alert('报告发布成功');
+                loadReports();
+                var modal = bootstrap.Modal.getInstance(document.getElementById('reportDetailModal'));
+                if (modal) modal.hide();
+            } else {
+                alert('发布失败: ' + (data.error || '未知错误'));
+            }
+        })
+        .catch(function(error) {
+            console.error('Error:', error);
+            alert('发布失败');
+        });
+}
+
+function downloadReport() {
+    if (!currentReportId) return;
+    fetch('/api/weekly-reports/' + currentReportId + '/download')
+        .then(function(response) {
+            if (!response.ok) return response.json().then(function(d) { throw new Error(d.error); });
+            return response.blob();
+        })
+        .then(function(blob) {
+            var url = window.URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = currentReportId + '.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        })
+        .catch(function(error) { alert('下载失败: ' + error.message); });
+}
+
+function shareReport(reportId) {
+    var shareUrl = window.location.origin + '/api/weekly-reports/' + reportId;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(shareUrl).then(function() {
+            alert('报告链接已复制到剪贴板');
+        }).catch(function() { fallbackCopy(shareUrl); });
+    } else { fallbackCopy(shareUrl); }
+}
+
+function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); alert('报告链接已复制到剪贴板'); }
+    catch (e) { prompt('请手动复制报告链接:', text); }
+    document.body.removeChild(ta);
+}
+
+function deleteReport(reportId) {
+    if (!confirm('确定要删除此报告吗？此操作不可恢复。')) return;
+    fetch('/api/weekly-reports/' + reportId, { method: 'DELETE' })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            if (data.success) {
+                loadReports();
+                var modal = bootstrap.Modal.getInstance(document.getElementById('reportDetailModal'));
+                if (modal) modal.hide();
+            } else {
+                alert('删除失败: ' + (data.error || '未知错误'));
+            }
+        })
+        .catch(function(error) { alert('删除失败: ' + error.message); });
+}
+
+function subscribeReport() {
+    var email = document.getElementById('subscribeEmail').value.trim();
+    var weekly = document.getElementById('subscribeWeekly').checked;
+    var monthly = document.getElementById('subscribeMonthly').checked;
+    if (!email) { alert('请输入邮箱地址'); return; }
+    if (!weekly && !monthly) { alert('请至少选择一种报告类型'); return; }
+
+    var btn = document.querySelector('.subscription-card .btn-light');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    var promises = [];
+
+    if (weekly) {
+        promises.push(
+            fetch('/api/report-subscriptions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email, report_type: 'weekly', delivery_method: 'email' })
+            }).then(function(r) { return r.json(); })
+        );
+    }
+    if (monthly) {
+        promises.push(
+            fetch('/api/report-subscriptions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email, report_type: 'monthly', delivery_method: 'email' })
+            }).then(function(r) { return r.json(); })
+        );
+    }
+
+    Promise.all(promises)
+        .then(function(results) {
+            var allOk = results.every(function(r) { return r.success; });
+            if (allOk) {
+                var types = [];
+                if (weekly) types.push('周报');
+                if (monthly) types.push('月报');
+                alert('订阅成功！' + email + ' 将定期接收' + types.join('和'));
+                document.getElementById('subscribeEmail').value = '';
+            } else {
+                var errors = results.filter(function(r) { return !r.success; }).map(function(r) { return r.error; }).join('; ');
+                alert('订阅失败: ' + errors);
+            }
+        })
+        .catch(function(err) { alert('订阅失败: ' + err.message); })
+        .then(function() {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check"></i>';
+        });
+}
+
+function updateStats() {
+    var total = currentReports.length;
+    var published = currentReports.filter(function(r) { return r.is_published; }).length;
+    var thisWeek = currentReports.filter(function(r) {
+        var reportDate = new Date(r.generated_at);
+        var weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        return reportDate > weekAgo;
+    }).length;
+    document.getElementById('totalReports').textContent = total;
+    document.getElementById('publishedReports').textContent = published;
+    document.getElementById('thisWeekReports').textContent = thisWeek;
+}
+
+window.filterReports = filterReports;
+window.viewReportDetail = viewReportDetail;
+window.downloadReport = downloadReport;
+window.publishReport = publishReport;
+window.shareReport = shareReport;
+window.deleteReport = deleteReport;
+window.subscribeReport = subscribeReport;
+window.showCustomReportModal = showCustomReportModal;
+window.generateCustomReport = generateCustomReport;
+window.generateWeeklyReport = generateWeeklyReport;
+</script>
+{% endblock %}

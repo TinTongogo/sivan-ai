@@ -1,0 +1,849 @@
+{% extends "base.html" %}
+
+{% block title %}智能体管理 - Sivan 管理控制台{% endblock %}
+{% block page_title %}<i class="bi bi-people"></i> 智能体管理{% endblock %}
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <div>
+                    <i class="bi bi-people me-2"></i>
+                    智能体列表 ({{ agents|length }} 个)
+                </div>
+                <div>
+                    <div class="btn-group me-2">
+                        <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown">
+                            <i class="bi bi-download"></i> 导出
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="/api/export/agents?format=csv"><i class="bi bi-filetype-csv me-2"></i>导出 CSV</a></li>
+                            <li><a class="dropdown-item" href="/api/export/agents?format=json"><i class="bi bi-filetype-json me-2"></i>导出 JSON</a></li>
+                        </ul>
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary me-2" onclick="refreshAgents()">
+                        <i class="bi bi-arrow-clockwise"></i> 刷新
+                    </button>
+                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addAgentModal">
+                        <i class="bi bi-plus-circle"></i> 添加智能体
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if agents and agents[0].error %}
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        加载智能体列表失败: {{ agents[0].error }}
+                    </div>
+                {% elif agents %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>名称</th>
+                                    <th>显示名称</th>
+                                    <th>描述</th>
+                                    <th>类型</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="agentsTableBody">
+                                {% for agent in agents %}
+                                <tr class="agent-row">
+                                    <td>
+                                        <strong>{{ agent.name }}</strong>
+                                    </td>
+                                    <td>{{ agent.display_name or '--' }}</td>
+                                    <td>
+                                        {% if agent.description %}
+                                            {{ agent.description[:100] }}{% if agent.description|length > 100 %}...{% endif %}
+                                        {% else %}
+                                            <span class="text-muted">无描述</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if agent.category == 'core' %}
+                                            <span class="badge bg-primary">核心</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">领域</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" onclick="viewAgent('{{ agent.name }}')">
+                                                <i class="bi bi-eye"></i> 查看
+                                            </button>
+                                            <button class="btn btn-outline-secondary" onclick="editAgent('{{ agent.name }}')">
+                                                <i class="bi bi-pencil"></i> 编辑
+                                            </button>
+                                            <button class="btn btn-outline-danger" onclick="deleteAgent('{{ agent.name }}')">
+                                                <i class="bi bi-trash"></i> 删除
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- 分页控件 -->
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <div class="text-muted small">
+                            显示 <span id="agentsPageStart">0</span>-<span id="agentsPageEnd">0</span>，共 <span id="agentsTotal">{{ agents|length }}</span> 个智能体
+                        </div>
+                        <nav>
+                            <ul class="pagination pagination-sm mb-0" id="agentsPagination"></ul>
+                        </nav>
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="bi bi-robot display-1 text-muted mb-3"></i>
+                        <h4 class="text-muted">暂无智能体数据</h4>
+                        <p class="text-muted">数据库中暂无智能体数据，请添加新智能体</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 智能体统计 -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-pie-chart me-2"></i>
+                智能体类型分布
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="agentTypeChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-info-circle me-2"></i>
+                智能体系统信息
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        核心智能体数量
+                        <span class="badge bg-primary rounded-pill" id="core-count">-</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        领域智能体数量
+                        <span class="badge bg-secondary rounded-pill" id="domain-count">-</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        智能体总数
+                        <span class="badge bg-info rounded-pill" id="total-count">-</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Agent-Skill 使用矩阵 -->
+<div class="row mt-2">
+    <div class="col-lg-12">
+        <div class="card mb-4">
+            <div class="card-header py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <h6 class="m-0 fw-bold">
+                    <i class="bi bi-grid-3x3 me-2"></i>Agent-Skill 使用矩阵
+                </h6>
+                <div class="d-flex align-items-center gap-2">
+                    <input type="text" id="matrixSearchInput" class="form-control form-control-sm" style="width:200px;" placeholder="搜索技能名称..." oninput="onMatrixSearch()">
+                    <select id="matrixPageSize" class="form-select form-select-sm" style="width:auto;" onchange="onMatrixPageSizeChange()">
+                        <option value="15">15条</option>
+                        <option value="30">30条</option>
+                        <option value="50">50条</option>
+                        <option value="0">全部</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-primary" onclick="loadAgentSkillMatrix()">
+                        <i class="bi bi-arrow-clockwise"></i> 刷新
+                    </button>
+                </div>
+            </div>
+            <div class="card-body" id="agentSkillMatrixContent">
+                <div class="text-center py-3 text-muted">
+                    <div class="spinner-border spinner-border-sm me-2"></div>加载中...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 添加智能体模态框 -->
+<div class="modal fade" id="addAgentModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-plus-circle me-2"></i>
+                    添加新智能体
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addAgentForm">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">智能体名称</label>
+                            <input type="text" class="form-control" name="name" required
+                                   placeholder="例如: data-scientist">
+                            <div class="form-text">小写字母和连字符</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">显示名称</label>
+                            <input type="text" class="form-control" name="display_name" required
+                                   placeholder="例如: 数据科学家">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">智能体类型</label>
+                            <select class="form-select" name="type" required>
+                                <option value="core">核心智能体</option>
+                                <option value="domain" selected>领域智能体</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">描述</label>
+                        <textarea class="form-control" name="description" rows="3"
+                                  placeholder="简要描述智能体的职责和专长"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">匠心宣言</label>
+                        <textarea class="form-control" name="craft_declaration" rows="2"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">系统提示 (system_prompt)</label>
+                        <textarea class="form-control" name="system_prompt" rows="6"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">可用技能</label>
+                        <div class="form-text mb-2">选择该智能体可以使用的技能</div>
+                        <div class="border rounded p-3" style="max-height: 200px; overflow-y: auto;">
+                            <!-- 技能复选框将在这里动态加载 -->
+                            <div class="text-center py-3">
+                                <div class="spinner-border spinner-border-sm text-muted"></div>
+                                <span class="ms-2 text-muted">加载技能列表...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="submitAddAgent()">创建智能体</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 查看智能体模态框 -->
+<div class="modal fade" id="viewAgentModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-eye me-2"></i>
+                    智能体详情
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="viewAgentBody">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary"></div>
+                    <p class="mt-2 text-muted">加载中...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑智能体模态框 -->
+<div class="modal fade" id="editAgentModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-pencil me-2"></i>
+                    编辑智能体
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editAgentForm">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">智能体名称</label>
+                            <input type="text" class="form-control bg-light" id="edit-name" readonly>
+                            <div class="form-text">创建后不可修改</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">显示名称</label>
+                            <input type="text" class="form-control" id="edit-display-name" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">智能体类型</label>
+                            <select class="form-select" id="edit-category" required>
+                                <option value="core">核心智能体</option>
+                                <option value="domain">领域智能体</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">描述</label>
+                        <textarea class="form-control" id="edit-description" rows="3"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">匠心宣言</label>
+                        <textarea class="form-control" id="edit-craft" rows="2"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">系统提示 (system_prompt)</label>
+                        <textarea class="form-control" id="edit-system-prompt" rows="6"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">可用技能</label>
+                        <div class="form-text mb-2">选择该智能体可以使用的技能</div>
+                        <div class="border rounded p-3" style="max-height: 200px; overflow-y: auto;" id="edit-skills-container">
+                            <div class="text-center py-3">
+                                <div class="spinner-border spinner-border-sm text-muted"></div>
+                                <span class="ms-2 text-muted">加载技能列表...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="submitEditAgent()">
+                    <i class="bi bi-check-lg"></i> 保存
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        cleanupModalBackdrop();
+        loadSystemInfo();
+        loadSkills();
+        loadAgentSkillMatrix();
+        initAgentPagination();
+    });
+
+    // ===== 动态加载系统信息 =====
+    function loadSystemInfo() {
+        fetch('/api/stats')
+            .then(r => r.json())
+            .then(stats => {
+                const agents = stats.agents || {};
+                const byType = agents.by_type || {};
+                const total = agents.total || 0;
+                const core = byType.core || byType['core'] || 0;
+                const domain = byType.domain || byType['domain'] || 0;
+
+                document.getElementById('core-count').textContent = core;
+                document.getElementById('domain-count').textContent = domain;
+                document.getElementById('total-count').textContent = total;
+
+                // 更新图表
+                const ctx = document.getElementById('agentTypeChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['核心智能体', '领域智能体'],
+                        datasets: [{
+                            data: [core, domain],
+                            backgroundColor: ['rgba(67, 97, 238, 0.8)', 'rgba(108, 117, 125, 0.8)'],
+                            borderColor: ['rgba(67, 97, 238, 1)', 'rgba(108, 117, 125, 1)'],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom' },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const label = context.label || '';
+                                        const value = context.raw || 0;
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+                                        return `${label}: ${value} (${pct}%)`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            })
+            .catch(err => console.error('加载系统信息失败:', err));
+    }
+
+    // ===== 刷新 =====
+    function refreshAgents() {
+        window.location.reload();
+    }
+
+    // ===== 查看智能体 =====
+    function viewAgent(agentName) {
+        const body = document.getElementById('viewAgentBody');
+        body.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">加载中...</p></div>';
+        const modal = new bootstrap.Modal(document.getElementById('viewAgentModal'));
+        modal.show();
+
+        fetch('/api/agents/' + encodeURIComponent(agentName))
+            .then(r => r.json())
+            .then(agent => {
+                if (agent.error) {
+                    body.innerHTML = '<div class="alert alert-danger">' + esc(agent.error) + '</div>';
+                    return;
+                }
+
+                const skills = Array.isArray(agent.skill_ids) ? agent.skill_ids.join(', ') : '--';
+                const tools = Array.isArray(agent.tools) ? agent.tools.join(', ') : '--';
+
+                body.innerHTML = `
+                    <div class="mb-3">
+                        <h5>${esc(agent.display_name)} <small class="text-muted ms-2">${esc(agent.agent_id)}</small>
+                            ${agent.category === 'core' ? '<span class="badge bg-primary ms-2">核心</span>' : '<span class="badge bg-secondary ms-2">领域</span>'}
+                        </h5>
+                        <p class="text-muted">${esc(agent.description) || '无描述'}</p>
+                    </div>
+                    <div class="mb-3">
+                        <strong>匠心宣言</strong>
+                        <blockquote class="blockquote ms-3 mt-1 text-muted" >
+                            ${esc(agent.craft_declaration)}
+                        </blockquote>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <strong>系统提示</strong>
+                        <pre class="mt-1 p-3 bg-light rounded" style="white-space:pre-wrap;font-size:0.9em;max-height:300px;overflow-y:auto;">${esc(agent.system_prompt) || '无'}</pre>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <strong>可用技能</strong>
+                        <p class="text-muted ms-3 mt-1">${esc(skills)}</p>
+                    </div>
+                    <div class="mb-3">
+                        <strong>工具权限</strong>
+                        <p class="text-muted ms-3 mt-1"><code>${esc(tools)}</code></p>
+                    </div>
+                    <div class="row text-muted small">
+                        <div class="col-md-6">版本: ${agent.version}</div>
+                        <div class="col-md-6">状态: ${agent.status}</div>
+                        <div class="col-md-6">创建时间: ${agent.created_at || '--'}</div>
+                        <div class="col-md-6">更新时间: ${agent.updated_at || '--'}</div>
+                    </div>
+                `;
+            })
+            .catch(err => {
+                body.innerHTML = '<div class="alert alert-danger">加载失败: ' + esc(err.message) + '</div>';
+            });
+    }
+
+    // ===== 编辑智能体 =====
+    let editingAgentName = null;
+
+    function editAgent(agentName) {
+        editingAgentName = agentName;
+        const modal = new bootstrap.Modal(document.getElementById('editAgentModal'));
+        modal.show();
+
+        // 加载智能体数据
+        fetch('/api/agents/' + encodeURIComponent(agentName))
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    alert('加载失败: ' + data.error);
+                    return;
+                }
+                document.getElementById('edit-name').value = data.agent_id || '';
+                document.getElementById('edit-display-name').value = data.display_name || '';
+                document.getElementById('edit-description').value = data.description || '';
+                document.getElementById('edit-category').value = data.category || 'domain';
+                document.getElementById('edit-craft').value = data.craft_declaration || '';
+                document.getElementById('edit-system-prompt').value = data.system_prompt || '';
+
+                // 加载技能列表并勾选当前智能体的技能
+                loadEditSkills(data.skill_ids || []);
+            })
+            .catch(err => {
+                alert('加载失败: ' + err.message);
+            });
+    }
+
+    // ===== 加载编辑表单的技能复选框 =====
+    function loadEditSkills(selectedSkills) {
+        const container = document.getElementById('edit-skills-container');
+        if (!container) return;
+
+        fetch('/api/skills')
+            .then(r => r.json())
+            .then(skills => {
+                if (!skills || skills.length === 0) {
+                    container.innerHTML = '<div class="text-center py-3 text-muted">暂无技能数据</div>';
+                    return;
+                }
+
+                const selected = Array.isArray(selectedSkills) ? selectedSkills : [];
+                let html = '';
+                skills.forEach(skill => {
+                    const id = skill.skill_id || skill.name;
+                    const name = skill.name || skill.skill_id || '未知技能';
+                    const desc = skill.description || '';
+                    const checked = selected.includes(id) ? 'checked' : '';
+                    html += '<div class="form-check mb-2">' +
+                        '<input class="form-check-input" type="checkbox" name="edit-skills" value="' + esc(id) + '" id="edit-skill-' + esc(id) + '" ' + checked + '>' +
+                        '<label class="form-check-label" for="edit-skill-' + esc(id) + '">' +
+                            '<strong>' + esc(name) + '</strong>' +
+                            (desc ? '<br><small class="text-muted">' + esc(desc.substring(0, 80)) + (desc.length > 80 ? '...' : '') + '</small>' : '') +
+                        '</label>' +
+                    '</div>';
+                });
+                container.innerHTML = html;
+            })
+            .catch(() => {
+                container.innerHTML = '<div class="alert alert-danger">加载技能列表失败</div>';
+            });
+    }
+
+    function submitEditAgent() {
+        // 从复选框收集技能
+        const skillCheckboxes = document.querySelectorAll('input[name="edit-skills"]:checked');
+        const skillIds = Array.from(skillCheckboxes).map(cb => cb.value);
+
+        const agentData = {
+            display_name: document.getElementById('edit-display-name').value.trim(),
+            description: document.getElementById('edit-description').value.trim(),
+            category: document.getElementById('edit-category').value,
+            craft_declaration: document.getElementById('edit-craft').value.trim(),
+            system_prompt: document.getElementById('edit-system-prompt').value.trim(),
+            skill_ids: skillIds
+        };
+
+        if (!agentData.display_name) {
+            alert('显示名称不能为空');
+            return;
+        }
+
+        const btn = document.querySelector('#editAgentModal .btn-primary');
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 保存中...';
+        btn.disabled = true;
+
+        fetch('/api/agents/' + encodeURIComponent(editingAgentName), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(agentData)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('editAgentModal')).hide();
+                setTimeout(() => window.location.reload(), 500);
+            } else {
+                alert('更新失败: ' + (data.error || '未知错误'));
+                btn.innerHTML = orig;
+                btn.disabled = false;
+            }
+        })
+        .catch(err => {
+            alert('更新失败: ' + err.message);
+            btn.innerHTML = orig;
+            btn.disabled = false;
+        });
+    }
+
+    // ===== 删除智能体 =====
+    function deleteAgent(agentName) {
+        if (!confirm('确定要删除智能体 "' + agentName + '" 吗？\n\n此操作将从数据库中永久删除，不可恢复。')) {
+            return;
+        }
+
+        fetch('/api/agents/' + encodeURIComponent(agentName), { method: 'DELETE' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.reload();
+                } else {
+                    alert('删除失败: ' + (data.error || '未知错误'));
+                }
+            })
+            .catch(err => {
+                alert('删除失败: ' + err.message);
+            });
+    }
+
+    // ===== 加载技能列表（用于添加智能体表单） =====
+    function loadSkills() {
+        const skillsContainer = document.querySelector('#addAgentForm .border.rounded.p-3');
+        if (!skillsContainer) return;
+
+        fetch('/api/skills')
+            .then(r => r.json())
+            .then(skills => {
+                if (!skills || skills.length === 0) {
+                    skillsContainer.innerHTML = '<div class="text-center py-3 text-muted">暂无技能数据</div>';
+                    return;
+                }
+
+                let html = '';
+                skills.forEach(skill => {
+                    const name = skill.name || skill.skill_id || '未知技能';
+                    const id = skill.skill_id || skill.name;
+                    const desc = skill.description || '';
+                    html += `<div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="skills" value="${esc(id)}" id="skill-${esc(id)}">
+                        <label class="form-check-label" for="skill-${esc(id)}">
+                            <strong>${esc(name)}</strong>
+                            ${desc ? '<br><small class="text-muted">' + esc(desc.substring(0, 80)) + (desc.length > 80 ? '...' : '') + '</small>' : ''}
+                        </label>
+                    </div>`;
+                });
+                skillsContainer.innerHTML = html;
+            })
+            .catch(() => {
+                skillsContainer.innerHTML = '<div class="alert alert-danger">加载技能列表失败，请刷新页面重试</div>';
+            });
+    }
+
+    // ===== 提交添加智能体 =====
+    function submitAddAgent() {
+        const form = document.getElementById('addAgentForm');
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+
+        const fd = new FormData(form);
+        const data = {
+            name: fd.get('name'),
+            display_name: fd.get('display_name'),
+            description: fd.get('description'),
+            type: fd.get('type'),
+            craft_declaration: fd.get('craft_declaration'),
+            system_prompt: fd.get('system_prompt'),
+            skills: fd.getAll('skills')
+        };
+
+        const btn = document.querySelector('#addAgentModal .btn-primary');
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 创建中...';
+        btn.disabled = true;
+
+        fetch('/api/agents', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(r => r.json())
+        .then(resp => {
+            if (resp.success) {
+                bootstrap.Modal.getInstance(document.getElementById('addAgentModal')).hide();
+                form.reset();
+                setTimeout(() => window.location.reload(), 500);
+            } else {
+                alert('创建失败: ' + (resp.error || '未知错误'));
+                btn.innerHTML = orig;
+                btn.disabled = false;
+            }
+        })
+        .catch(err => {
+            alert('创建失败: ' + err.message);
+            btn.innerHTML = orig;
+            btn.disabled = false;
+        });
+    }
+
+    // ===== Agent-Skill 使用矩阵（水平滚动+固定列+搜索） =====
+    let matrixData = null;
+    let matrixPage = 1;
+
+    function getMatrixPageSize() {
+        const sel = document.getElementById('matrixPageSize');
+        const v = parseInt(sel ? sel.value : '15');
+        return v === 0 ? Infinity : v;
+    }
+
+    function onMatrixSearch() {
+        matrixPage = 1;
+        renderMatrix();
+    }
+
+    function onMatrixPageSizeChange() {
+        matrixPage = 1;
+        renderMatrix();
+    }
+
+    function loadAgentSkillMatrix() {
+        const container = document.getElementById('agentSkillMatrixContent');
+        if (!container) return;
+        container.innerHTML = '<div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>加载中...</div>';
+
+        fetch('/api/agent-skill-usage')
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    container.innerHTML = `<div class="text-center text-danger py-3">加载失败: ${data.error}</div>`;
+                    return;
+                }
+                matrixData = data;
+                const q = document.getElementById('matrixSearchInput');
+                if (q) q.value = '';
+                matrixPage = 1;
+                renderMatrix();
+            })
+            .catch(err => {
+                container.innerHTML = `<div class="text-center text-danger py-3">加载失败: ${err}</div>`;
+            });
+    }
+
+    function esc(s) { return String(s).replace(/[&<>"']/g, function(m) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]; }); }
+
+    function renderMatrix() {
+        const container = document.getElementById('agentSkillMatrixContent');
+        if (!container || !matrixData) return;
+
+        const { agents, skills, matrix, skill_totals, configured_agents } = matrixData;
+
+        if (!agents || agents.length === 0 || !skills || skills.length === 0) {
+            container.innerHTML = '<div class="text-center py-4 text-muted"><i class="bi bi-info-circle me-2"></i>暂无技能数据</div>';
+            return;
+        }
+
+        // 1. 排序 + 搜索过滤
+        const query = (document.getElementById('matrixSearchInput')?.value || '').trim().toLowerCase();
+        const sortedSkills = skills.sort((a, b) => (skill_totals[b] || 0) - (skill_totals[a] || 0));
+        const filteredSkills = query
+            ? sortedSkills.filter(sid => sid.toLowerCase().includes(query))
+            : sortedSkills;
+
+        // 2. 分页（无页码按钮，仅 prev/next）
+        const pageSize = getMatrixPageSize();
+        const totalPages = pageSize === Infinity ? 1 : Math.ceil(filteredSkills.length / pageSize) || 1;
+        if (matrixPage > totalPages) matrixPage = totalPages;
+        const startIdx = (matrixPage - 1) * pageSize;
+        const pageSkills = filteredSkills.slice(startIdx, startIdx + pageSize);
+
+        // 3. 渲染表格（固定列：Agent + 使用/配置）
+        let html = '<div style="overflow-x:auto;overflow-y:visible;max-width:100%;border:1px solid var(--border);border-radius:4px;">';
+        html += '<table class="table table-sm table-bordered mb-0" style="min-width:100%;border-collapse:separate;border-spacing:0;">';
+        html += '<thead><tr>';
+        html += '<th class="text-center matrix-sticky-left" style="min-width:110px;">Agent \\ 技能</th>';
+        for (const skillId of pageSkills) {
+            const shortName = skillId.length > 10 ? skillId.substring(0, 8) + '..' : skillId;
+            html += `<th class="text-center" style="min-width:56px;max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(skillId)}">${esc(shortName)}</th>`;
+        }
+        html += '<th class="text-center matrix-sticky-right" style="min-width:70px;">使用/配置</th>';
+        html += '</tr></thead><tbody>';
+
+        for (const agent of agents) {
+            html += '<tr>';
+            html += `<td class="matrix-sticky-cell-left fw-600 text-nowrap">${esc(agent)}</td>`;
+            let usedCount = 0, configuredCount = 0;
+            const agentCfg = configured_agents && configured_agents[agent];
+            const agentSkillIds = agentCfg ? (agentCfg.skill_ids || []) : [];
+
+            for (const skillId of pageSkills) {
+                const cell = matrix[agent] ? matrix[agent][skillId] : null;
+                const isConfigured = cell ? cell.configured : (agentSkillIds.indexOf(skillId) !== -1);
+
+                if (cell && cell.usage_count > 0) {
+                    usedCount++;
+                    if (isConfigured) configuredCount++;
+                    const c = cell.usage_count;
+                    const intensity = Math.min(c, 20) / 20;
+                    const r = Math.round(78 + 23 * (1 - intensity));
+                    const g = Math.round(115 + 85 * intensity);
+                    const b = Math.round(223 - 145 * (1 - intensity));
+                    html += `<td class="text-center" style="background-color:rgba(${r},${g},${b},0.25);font-size:0.85rem;" title="${esc(cell.skill_display_name)}: ${c}次使用">${c}</td>`;
+                } else if (isConfigured) {
+                    configuredCount++;
+                    html += `<td class="text-center" style="border:2px dotted #ffc107;background-color:rgba(255,193,7,0.06);font-size:0.75rem;" title="已配置但未使用"><span class="text-warning">配</span></td>`;
+                } else {
+                    html += '<td class="text-center text-muted" style="font-size:0.75rem;">-</td>';
+                }
+            }
+            html += `<td class="text-center matrix-sticky-cell-right text-nowrap"><span class="badge bg-primary" style="font-size:0.75rem;">${usedCount}</span>/<span class="badge bg-warning text-dark" style="font-size:0.75rem;">${configuredCount}</span></td>`;
+            html += '</tr>';
+        }
+        html += '</tbody></table></div>';
+
+        // 4. 导航：prev/next + 统计
+        html += '<div class="d-flex justify-content-between align-items-center mt-2">';
+        html += '<div>';
+        if (totalPages > 1) {
+            html += '<div class="btn-group btn-group-sm">';
+            html += `<button class="btn btn-outline-secondary" onclick="matrixPage=Math.max(1,${matrixPage}-1);renderMatrix();" ${matrixPage <= 1 ? 'disabled' : ''}>‹ 上一页</button>`;
+            html += `<button class="btn btn-outline-secondary" onclick="matrixPage=Math.min(${totalPages},${matrixPage}+1);renderMatrix();" ${matrixPage >= totalPages ? 'disabled' : ''}>下一页 ›</button>`;
+            html += '</div>';
+        }
+        html += '</div>';
+        html += '<div class="d-flex align-items-center gap-3">';
+        html += '<span class="text-muted small">数字=使用次数，<span class="text-warning">「配」=已配置未使用</span></span>';
+        const totalSkills = skills.length;
+        const shown = pageSize === Infinity ? totalSkills : Math.min(startIdx + pageSize, filteredSkills.length);
+        html += `<span class="text-muted small">${shown}/${totalSkills} 技能${query ? '（已过滤）' : ''}${totalPages > 1 ? '，第 ' + matrixPage + '/' + totalPages + ' 页' : ''}</span>`;
+        html += '</div></div>';
+
+        container.innerHTML = html;
+    }
+
+    // ===== 智能体分页 =====
+    const AGENT_PAGE_SIZE = 10;
+
+    function initAgentPagination() {
+        var rows = document.querySelectorAll('#agentsTableBody .agent-row');
+        var total = rows.length;
+        var totalPages = Math.ceil(total / AGENT_PAGE_SIZE) || 1;
+
+        document.getElementById('agentsTotal').textContent = total;
+
+        if (total === 0) {
+            document.getElementById('agentsPageStart').textContent = '0';
+            document.getElementById('agentsPageEnd').textContent = '0';
+            renderPagination('agentsPagination', 1, 1, function(){});
+            return;
+        }
+
+        function showPage(page) {
+            var start = (page - 1) * AGENT_PAGE_SIZE, end = Math.min(start + AGENT_PAGE_SIZE, total);
+            rows.forEach(function(r, i){ r.style.display = (i >= start && i < end) ? '' : 'none'; });
+            document.getElementById('agentsPageStart').textContent = start + 1;
+            document.getElementById('agentsPageEnd').textContent = end;
+            renderPagination('agentsPagination', page, totalPages, showPage);
+        }
+        showPage(1);
+    }
+</script>
+{% endblock %}

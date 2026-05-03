@@ -1,0 +1,1045 @@
+{% extends "base.html" %}
+
+{% block title %}Squad管理{% endblock %}
+{% block page_title %}<i class="bi bi-people"></i> Squad管理{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ===== Phase Editor ===== */
+    .pattern-card {
+        cursor: pointer;
+        min-width: 140px;
+        border: 2px solid transparent;
+        transition: all 0.2s ease;
+        flex: 1;
+    }
+    .pattern-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+    }
+    .pattern-card.active { border-color: var(--primary, #4361ee); background-color: #f0f4ff; }
+    .pattern-card .card-icon { font-size: 1.8rem; line-height: 1; }
+    .pattern-card .card-body { padding: 12px 8px; }
+    .pattern-card h6 { font-size: 0.85rem; margin-bottom: 4px; }
+    .pattern-card small { font-size: 0.7rem; }
+
+    .phase-card { border: 1px solid #e0e0e0; border-left: 3px solid #d0d0d0; border-radius: 8px; margin-bottom: 12px; }
+    .phase-card .card-header {
+        background: linear-gradient(135deg, #f8faff 0%, #f0f4ff 100%);
+        border-bottom: 1px solid #e8ecf4;
+        padding: 10px 16px;
+    }
+    .phase-card.mode-sequential { border-left-color: var(--primary, #4361ee); }
+    .phase-card.mode-parallel { border-left-color: #20c997; }
+    .phase-card.mode-conditional { border-left-color: #fd7e14; }
+    .phase-card.mode-hierarchical { border-left-color: #6f42c1; }
+    .phase-card.mode-consensus { border-left-color: #e83e8c; }
+
+    .agent-grid { border: 1px solid #e9ecef; border-radius: 6px; overflow: hidden; }
+    .agent-grid-header, .agent-grid-row { display: flex; align-items: center; padding: 6px 8px; gap: 8px; }
+    .agent-grid-header { background-color: #f8f9fa; font-weight: 600; font-size: 0.8rem; border-bottom: 1px solid #e9ecef; }
+    .agent-grid-row { border-bottom: 1px solid #f0f0f0; font-size: 0.85rem; }
+    .agent-grid-row:last-child { border-bottom: none; }
+    .agent-grid-row:hover { background-color: #f8faff; }
+    .agent-grid-empty { padding: 12px; text-align: center; color: #6c757d; font-size: 0.85rem; }
+    .ag-col-name { flex: 2; }
+    .ag-col-role { flex: 2; }
+    .ag-col-lead { flex: 0 0 70px; text-align: center; }
+    .ag-col-weight { flex: 0 0 60px; text-align: center; }
+    .ag-col-actions { flex: 0 0 50px; text-align: center; }
+
+    .phase-add-agent-row { background-color: #f8f9fa; border-radius: 6px; padding: 8px 10px; margin-top: 8px; }
+
+    /* Phase timeline */
+    .phase-timeline { position: relative; padding-left: 30px; }
+    .phase-timeline::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background-color: #dee2e6; }
+    .phase-item { position: relative; margin-bottom: 20px; }
+    .phase-item::before { content: ''; position: absolute; left: -34px; top: 5px; width: 12px; height: 12px; border-radius: 50%; background-color: #6c757d; border: 2px solid white; }
+    .phase-item.current::before { background-color: #0d6efd; animation: pulse 2s infinite; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(13, 110, 253, 0); } 100% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0); } }
+
+    .agent-badge { font-size: 0.75rem; margin-right: 4px; margin-bottom: 4px; }
+
+    /* ===== Workflow Type Visual Selector ===== */
+    .workflow-type-card {
+        cursor: pointer;
+        border: 2px solid #e0e0e0;
+        border-radius: 10px;
+        transition: all 0.25s ease;
+        height: 100%;
+        min-height: 100px;
+    }
+    .workflow-type-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+        border-color: var(--primary, #4361ee);
+    }
+    .workflow-type-card.active {
+        border-color: var(--primary, #4361ee);
+        background: linear-gradient(135deg, #f0f4ff 0%, #e8eeff 100%);
+        box-shadow: 0 4px 12px rgba(67, 97, 238, 0.18);
+    }
+    .workflow-type-card .wf-icon {
+        font-size: 1.6rem;
+        color: #6c757d;
+        transition: color 0.2s;
+    }
+    .workflow-type-card:hover .wf-icon,
+    .workflow-type-card.active .wf-icon {
+        color: var(--primary, #4361ee);
+    }
+    .workflow-type-card h6 {
+        font-size: 0.85rem;
+        margin-bottom: 2px;
+    }
+    .workflow-type-card small {
+        font-size: 0.7rem;
+        display: block;
+        line-height: 1.3;
+    }
+
+    /* ===== HITL ===== */
+    .hitl-modal-output {
+        max-height: 400px; overflow-y: auto; background: #f8f9fb;
+        padding: 16px; border-radius: 8px; font-size: 0.85rem;
+        white-space: pre-wrap; word-break: break-word; font-family: monospace;
+    }
+    .hitl-phase-badge {
+        font-size: 0.8rem; padding: 4px 12px; border-radius: 12px;
+    }
+
+	/* ── Dark Mode ── */
+	body.dark-mode .pattern-card.active { background-color: rgba(67,97,238,0.12); }
+	body.dark-mode .agent-grid-header { background-color: #1a2535; border-bottom-color: #334155; }
+	body.dark-mode .agent-grid-row:hover { background-color: rgba(255,255,255,0.04); }
+	body.dark-mode .agent-grid-empty { color: #94a3b8; }
+	body.dark-mode .phase-add-agent-row { background-color: #1e293b; }
+	body.dark-mode .phase-timeline::before { background-color: #334155; }
+	body.dark-mode .phase-item::before { background-color: #94a3b8; border-color: var(--surface); }
+	body.dark-mode .workflow-type-card { background-color: var(--surface); }
+	body.dark-mode .phase-card { background-color: var(--surface); }
+	body.dark-mode #topoFbList { background: #1e293b; }</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 左侧统计面板 -->
+    <div class="col-lg-3">
+        <div class="stat-badge mb-3">
+            <div class="stat-badge-icon" style="background:rgba(67,97,238,0.1);color:#4361ee;"><i class="bi bi-people"></i></div>
+            <div>
+                <div class="stat-badge-value">{{ squads_stats.total|default(0)|format_number }}</div>
+                <div class="stat-badge-label">总Squad数</div>
+            </div>
+        </div>
+
+        <div class="stat-badge mb-3">
+            <div class="stat-badge-icon" style="background:rgba(240,147,251,0.1);color:#f5576c;"><i class="bi bi-play-circle"></i></div>
+            <div>
+                <div class="stat-badge-value">{{ squads_stats.total_executions|default(0)|format_number }}</div>
+                <div class="stat-badge-label">总执行次数</div>
+            </div>
+        </div>
+
+        <div class="stat-badge mb-3">
+            <div class="stat-badge-icon" style="background:rgba(79,172,254,0.1);color:#00f2fe;"><i class="bi bi-check-circle"></i></div>
+            <div>
+                <div class="stat-badge-value">
+                    {% if squads_stats.total_executions and squads_stats.total_executions > 0 %}
+                        {{ ((squads_stats.total_successes|default(0) * 100) / squads_stats.total_executions)|round(1) }}%
+                    {% else %}0%{% endif %}
+                </div>
+                <div class="stat-badge-label">成功率</div>
+            </div>
+        </div>
+
+        <!-- 状态分布 -->
+        <div class="card mb-3">
+            <div class="card-header"><h6><i class="bi bi-pie-chart"></i> 状态分布</h6></div>
+            <div class="card-body">
+                {% for status, count in (squads_stats.by_status|default({})).items() %}
+                <div class="d-flex justify-content-between mb-2">
+                    <span>
+                        {% if status == 'active' %}<i class="bi bi-check-circle-fill text-success"></i>
+                        {% elif status == 'inactive' %}<i class="bi bi-x-circle-fill text-danger"></i>
+                        {% elif status == 'draft' %}<i class="bi bi-pencil-fill text-warning"></i>
+                        {% else %}<i class="bi bi-circle-fill text-secondary"></i>{% endif %}
+                        {{ status|title }}
+                    </span>
+                    <span class="badge bg-secondary">{{ count }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- 分类分布 -->
+        <div class="card mb-3">
+            <div class="card-header"><h6><i class="bi bi-tags"></i> 分类分布</h6></div>
+            <div class="card-body">
+                {% for category, count in (squads_stats.by_category|default({})).items() %}
+                <div class="d-flex justify-content-between mb-2">
+                    <span><i class="bi bi-tag-fill" style="color: {{ loop.index0|get_chart_color }}"></i> {{ category|default('未分类') }}</span>
+                    <span class="badge bg-secondary">{{ count }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="d-grid gap-2 mt-3">
+            <button class="btn btn-success" onclick="showCreateSquadModal()"><i class="bi bi-plus-circle"></i> 创建新Squad</button>
+            <button class="btn btn-outline-secondary" onclick="loadMostActiveSquads()"><i class="bi bi-fire"></i> 查看活跃Squad</button>
+        </div>
+    </div>
+
+    <!-- 右侧Squad列表 -->
+    <div class="col-lg-9">
+        <div class="card">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-people"></i> Squad列表 <span class="badge bg-secondary ms-2">{{ squads|length }}</span></h5>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="text-muted small" id="squad-selected-count" style="display:none;"></span>
+                        <button class="btn btn-outline-danger btn-sm" id="squad-batch-delete-btn" style="display:none;" onclick="squadBatchDelete()">
+                            <i class="bi bi-trash"></i> 批量删除
+                        </button>
+                        <div>
+                            <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-download"></i> 导出</button>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="/api/export/squads?format=csv"><i class="bi bi-filetype-csv me-2"></i>导出 CSV</a></li>
+                                <li><a class="dropdown-item" href="/api/export/squads?format=json"><i class="bi bi-filetype-json me-2"></i>导出 JSON</a></li>
+                            </ul>
+                        </div>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="filterSquads('all')">全部</button>
+                            <button class="btn btn-sm btn-outline-success" onclick="filterSquads('active')">活跃</button>
+                            <button class="btn btn-sm btn-outline-warning" onclick="filterSquads('draft')">草稿</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if squads %}
+                <div class="row" id="squads-container">
+                    {% for squad in squads %}
+                    <div class="col-md-6 col-lg-4 mb-4 squad-item" data-status="{{ squad.status }}" data-id="{{ squad.squad_id }}">
+                        <div class="card h-100">
+                            <div class="card-header">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <input type="checkbox" class="squad-checkbox" value="{{ squad.squad_id }}" onchange="updateSquadBatchDeleteBtn()">
+                                        <h6 class="mb-0">{{ squad.name }}</h6>
+                                    </div>
+                                    <span class="badge bg-{{ 'success' if squad.status == 'active' else 'danger' if squad.status == 'inactive' else 'warning' }}">
+                                        {% if squad.status == 'active' %}<i class="bi bi-check-circle"></i> 活跃
+                                        {% elif squad.status == 'inactive' %}<i class="bi bi-x-circle"></i> 停用
+                                        {% elif squad.status == 'draft' %}<i class="bi bi-pencil"></i> 草稿
+                                        {% else %}{{ squad.status }}{% endif %}
+                                    </span>
+                                </div>
+                                <small class="text-muted">ID: {{ squad.squad_id }}</small>
+                            </div>
+                            <div class="card-body">
+                                <p class="card-text small">{{ squad.description|truncate(100) }}</p>
+                                <div class="mb-3">
+                                    <small class="text-muted d-block mb-1"><i class="bi bi-people"></i> 智能体成员 ({{ squad.agent_count|default(0) }})</small>
+                                    <div>
+                                        {% for i in range(1, 4) if i <= squad.agent_count|default(0) %}
+                                        <span class="badge bg-light text-dark agent-badge">智能体 {{ i }}</span>
+                                        {% endfor %}
+                                        {% if squad.agent_count|default(0) > 3 %}
+                                        <span class="badge bg-secondary agent-badge">+{{ squad.agent_count|default(0) - 3 }}</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="d-flex justify-content-between small text-muted">
+                                    <div><i class="bi bi-play-circle"></i> 执行: {{ squad.execution_count|default(0) }}</div>
+                                    <div><i class="bi bi-check-circle"></i> 成功: {{ squad.success_count|default(0) }}</div>
+                                    <div>{% if squad.category %}<i class="bi bi-tag"></i> {{ squad.category }}{% endif %}</div>
+                                </div>
+                            </div>
+                            <div class="card-footer bg-transparent">
+                                <div class="d-flex justify-content-between">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" onclick="viewSquadDetail('{{ squad.squad_id }}')"><i class="bi bi-eye"></i> 查看</button>
+                                    </div>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-warning" onclick="editSquad('{{ squad.squad_id }}')"><i class="bi bi-pencil"></i> 编辑</button>
+                                        <button class="btn btn-outline-danger" onclick="deleteSquad('{{ squad.squad_id }}')"><i class="bi bi-trash"></i> 删除</button>
+                                    </div>
+                                </div>
+                                <small class="text-muted d-block mt-2">更新: {{ squad.updated_at|format_date if squad.updated_at else '未知' }}</small>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <!-- 分页控件 -->
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div class="text-muted small">显示 <span id="squadPageStart">0</span>-<span id="squadPageEnd">0</span>，共 <span id="squadTotal">{{ squads|length }}</span> 个</div>
+                    <div class="d-flex align-items-center gap-2">
+                        <select class="form-select form-select-sm" style="width:auto;" id="squad-page-size" onchange="changeSquadPageSize(this)">
+                            <option value="12">12条/页</option>
+                            <option value="24">24条/页</option>
+                            <option value="48">48条/页</option>
+                            <option value="96">96条/页</option>
+                        </select>
+                        <nav><ul class="pagination pagination-sm mb-0" id="squadsPagination"></ul></nav>
+                    </div>
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <i class="bi bi-people"></i>
+                    <h5>暂无Squad</h5>
+                    <p>还没有创建任何Squad，点击上方按钮创建</p>
+                    <button class="btn btn-primary" onclick="showCreateSquadModal()"><i class="bi bi-plus-circle"></i> 创建第一个Squad</button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 最活跃Squad -->
+        {% if squads_stats.most_active and squads_stats.most_active|length > 0 %}
+        <div class="card mt-4">
+            <div class="card-header"><h5 class="mb-0"><i class="bi bi-fire"></i> 最活跃Squad</h5></div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr><th>Squad名称</th><th>执行次数</th><th>成功率</th><th>状态</th><th>操作</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for squad in squads_stats.most_active %}
+                            <tr>
+                                <td>{{ squad.name }}</td>
+                                <td><span class="badge bg-primary rounded-pill">{{ squad.execution_count }}</span></td>
+                                <td>
+                                    {% set success_rate = (squad.success_count|default(0) * 100 / squad.execution_count)|round(1) if squad.execution_count > 0 else 0 %}
+                                    <div class="progress" style="height:20px;">
+                                        <div class="progress-bar bg-success" style="width:{{ success_rate }}%">{{ success_rate }}%</div>
+                                    </div>
+                                </td>
+                                <td><span class="badge bg-success">活跃</span></td>
+                                <td><button class="btn btn-sm btn-outline-primary" onclick="viewSquadDetail('{{ squad.squad_id }}')">查看</button></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- ===== 拓扑反馈 ===== -->
+        <div class="card mt-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center" style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#topoFeedbackCollapse" aria-expanded="false">
+                <h6 class="mb-0"><i class="bi bi-graph-up-arrow me-1"></i>拓扑反馈 <span class="badge bg-info ms-1" id="topoFbTotalBadge">0</span></h6>
+                <div><i class="bi bi-chevron-down text-muted" id="topoFbChevron"></i></div>
+            </div>
+            <div class="collapse" id="topoFeedbackCollapse">
+                <div class="card-body">
+                    <div class="row g-3 mb-3" id="topoFbStatsRow">
+                        <div class="col-md-4"><div class="stat-badge mb-0"><div class="stat-badge-icon" style="background:rgba(13,110,253,0.1);color:#0d6efd;"><i class="bi bi-collection"></i></div><div><div class="stat-badge-value" id="topoFbTotal">--</div><div class="stat-badge-label">总反馈数</div></div></div></div>
+                        <div class="col-md-4"><div class="stat-badge mb-0"><div class="stat-badge-icon" style="background:rgba(25,135,84,0.1);color:#198754;"><i class="bi bi-star"></i></div><div><div class="stat-badge-value" id="topoFbAvg">--</div><div class="stat-badge-label">平均满意度</div></div></div></div>
+                        <div class="col-md-4"><div class="stat-badge mb-0"><div class="stat-badge-icon" style="background:rgba(111,66,193,0.1);color:#6f42c1;"><i class="bi bi-tags"></i></div><div><div class="stat-badge-value" id="topoFbUnique">--</div><div class="stat-badge-label">唯一任务签名</div></div></div></div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm" id="topoFbTable">
+                            <thead>
+                                <tr>
+                                    <th style="width:90px">任务签名</th>
+                                    <th>拓扑概要</th>
+                                    <th style="width:80px">满意度</th>
+                                    <th style="width:140px">执行ID</th>
+                                    <th style="width:120px">时间</th>
+                                </tr>
+                            </thead>
+                            <tbody id="topoFbTableBody">
+                                <tr><td colspan="5" class="text-center py-4 text-muted"><i class="bi bi-arrow-repeat me-1"></i>加载中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="topoFbEmpty" class="empty-state" style="display:none">
+                        <i class="bi bi-graph-up-arrow"></i>
+                        <h5>暂无拓扑反馈</h5>
+                        <p>Squad 执行完成后会自动记录拓扑反馈</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Squad详情模态框 -->
+<div class="modal fade" id="squadDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Squad详情</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body" id="squadDetailContent"></div>
+        </div>
+    </div>
+</div>
+
+<!-- 创建Squad模态框 -->
+<div class="modal fade" id="createSquadModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>创建新Squad</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createSquadForm" onsubmit="return false;">
+                    <ul class="nav nav-tabs mb-3" id="createSquadTabs">
+                        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#create-basic">基本信息</a></li>
+                        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#create-phases">阶段与智能体</a></li>
+                    </ul>
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="create-basic">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">名称 <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="create-squad-name" required placeholder="输入Squad名称">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">版本</label>
+                                    <input type="text" class="form-control" id="create-squad-version" placeholder="1.0.0" value="1.0.0">
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">描述</label>
+                                <textarea class="form-control" id="create-squad-desc" rows="3" placeholder="描述Squad的目标和职责"></textarea>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">状态</label>
+                                    <select class="form-select" id="create-squad-status">
+                                        <option value="active">活跃</option>
+                                        <option value="draft" selected>草稿</option>
+                                        <option value="inactive">停用</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">分类</label>
+                                    <input type="text" class="form-control" id="create-squad-category" placeholder="可选">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="create-phases">
+                            <!-- 可视化编排类型选择器 -->
+                            <div class="mb-3">
+                                <label class="form-label fw-bold"><i class="bi bi-grid-3x3-gap me-1"></i>编排类型</label>
+                                <div class="row g-2" id="create-workflow-type-selector">
+                                    <!-- 由 JS 渲染 -->
+                                </div>
+                                <input type="hidden" id="create-workflow-type" value="sequential">
+                            </div>
+                            <div class="row" id="create-advanced-config" style="display:none;">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">最大并行智能体数</label>
+                                    <input type="number" class="form-control" id="create-max-parallel" value="3" min="1" max="20">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">预估工期（天）</label>
+                                    <input type="number" class="form-control" id="create-est-duration" value="7" min="1" max="365">
+                                </div>
+                            </div>
+                            <div id="create-phases-container">
+                                <div class="text-muted text-center py-4" id="create-phases-empty">
+                                    <i class="bi bi-diagram-3 display-6"></i>
+                                    <p class="mt-2">暂无阶段，点击下方按钮添加</p>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <button type="button" class="btn btn-sm btn-success" onclick="createPhase('create')"><i class="bi bi-plus-circle"></i> 添加阶段</button>
+                            </div>
+                            <div class="mt-3" id="create-orch-preview" style="display:none;">
+                                <h6><i class="bi bi-diagram-3"></i> 编排预览</h6>
+                                <div class="border rounded p-3 bg-light" id="create-orch-preview-content"></div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="createSquad()"><i class="bi bi-check-lg"></i> 创建</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑Squad模态框 -->
+<div class="modal fade" id="editSquadModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>编辑Squad</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editSquadForm" onsubmit="return false;">
+                    <input type="hidden" id="edit-squad-id">
+                    <ul class="nav nav-tabs mb-3" id="editSquadTabs">
+                        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#edit-basic">基本信息</a></li>
+                        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#edit-phases">阶段与智能体</a></li>
+                    </ul>
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="edit-basic">
+                            <div class="row">
+                                <div class="col-md-6 mb-3"><label class="form-label">名称 <span class="text-danger">*</span></label><input type="text" class="form-control" id="edit-squad-name" required></div>
+                                <div class="col-md-6 mb-3"><label class="form-label">版本</label><input type="text" class="form-control" id="edit-squad-version" placeholder="1.0.0"></div>
+                            </div>
+                            <div class="mb-3"><label class="form-label">描述</label><textarea class="form-control" id="edit-squad-desc" rows="3"></textarea></div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3"><label class="form-label">状态</label><select class="form-select" id="edit-squad-status"><option value="active">活跃</option><option value="draft">草稿</option><option value="inactive">停用</option></select></div>
+                                <div class="col-md-6 mb-3"><label class="form-label">分类</label><input type="text" class="form-control" id="edit-squad-category" placeholder="可选"></div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="edit-phases">
+                            <!-- 可视化编排类型选择器 -->
+                            <div class="mb-3">
+                                <label class="form-label fw-bold"><i class="bi bi-grid-3x3-gap me-1"></i>编排类型</label>
+                                <div class="row g-2" id="edit-workflow-type-selector">
+                                    <!-- 由 JS 渲染 -->
+                                </div>
+                                <input type="hidden" id="edit-workflow-type" value="sequential">
+                            </div>
+                            <div class="row mt-3"><div class="col-12"><div class="d-flex flex-wrap gap-2" id="edit-pattern-cards"><div class="text-muted small py-2"><i class="bi bi-arrow-repeat me-1"></i>加载模板中...</div></div></div></div>
+                            <div class="row" id="edit-advanced-config" style="display:none;">
+                                <div class="col-md-6 mb-3"><label class="form-label">最大并行智能体数</label><input type="number" class="form-control" id="edit-max-parallel" value="3" min="1" max="20"></div>
+                                <div class="col-md-6 mb-3"><label class="form-label">预估工期（天）</label><input type="number" class="form-control" id="edit-est-duration" value="7" min="1" max="365"></div>
+                            </div>
+                            <div id="edit-phases-container"><div class="text-muted text-center py-4" id="edit-phases-empty"><i class="bi bi-diagram-3 display-6"></i><p class="mt-2">暂无阶段</p></div></div>
+                            <div class="mt-3"><button type="button" class="btn btn-sm btn-success" onclick="createPhase('edit')"><i class="bi bi-plus-circle"></i> 添加阶段</button></div>
+                            <div class="mt-3" id="edit-orch-preview" style="display:none;"><h6><i class="bi bi-diagram-3"></i> 编排预览</h6><div class="border rounded p-3 bg-light" id="edit-orch-preview-content"></div></div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="submitEditSquad()"><i class="bi bi-check-lg"></i> 保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ===== Constants =====
+var WORKFLOW_TYPE_INFO = {
+    sequential: '串行编排：按阶段顺序执行，每个阶段完成后自动进入下一阶段。适合有明确前后依赖关系的线性流程。',
+    parallel: '并行编排：多个阶段可同时执行，智能体并行工作以提高效率。适合任务可拆分为独立子任务的场景。',
+    conditional: '条件分支编排：根据前一阶段的输出结果动态决定下一阶段的执行路径。适合需要决策分支的复杂流程。',
+    hierarchical: '层次编排：支持子Squad嵌套，父级Squad协调多个子Squad完成复杂任务。适合大规模、多层级团队协作。',
+    consensus: '共识编排：多个智能体独立执行相同任务后投票/汇总结果，取共识作为最终输出。适合需要多角度验证的决策场景。'
+};
+var MODE_LABELS = { sequential:'串行', parallel:'并行', conditional:'条件分支', hierarchical:'层次', consensus:'共识' };
+function getWorkflowModeLabel(m){return MODE_LABELS[m]||m;}
+function getModeRules(mode) {
+    var r = {
+        sequential:{showSortOrder:true,showIsLead:false,showWeight:false,showConditions:false,showThreshold:false,showParentPhase:false},
+        parallel:{showSortOrder:false,showIsLead:false,showWeight:false,showConditions:false,showThreshold:false,showParentPhase:false},
+        conditional:{showSortOrder:false,showIsLead:false,showWeight:false,showConditions:true,showThreshold:false,showParentPhase:false},
+        hierarchical:{showSortOrder:false,showIsLead:true,showWeight:false,showConditions:false,showThreshold:false,showParentPhase:true},
+        consensus:{showSortOrder:false,showIsLead:false,showWeight:true,showConditions:false,showThreshold:true,showParentPhase:false}
+    };
+    return r[mode]||r.sequential;
+}
+
+// ===== Workflow Type Visual Selector =====
+var WORKFLOW_TYPE_ICONS = {
+    sequential: 'bi-arrow-right-circle',
+    parallel: 'bi-arrows-expand',
+    conditional: 'bi-question-diamond',
+    hierarchical: 'bi-diagram-3',
+    consensus: 'bi-chat-dots'
+};
+
+function renderWorkflowTypeSelector(prefix) {
+    var container = document.getElementById(prefix + '-workflow-type-selector');
+    if (!container) return;
+    var currentType = document.getElementById(prefix + '-workflow-type').value;
+    var types = ['sequential', 'parallel', 'conditional', 'hierarchical', 'consensus'];
+    container.innerHTML = types.map(function(type) {
+        var info = WORKFLOW_TYPE_INFO[type] || '';
+        var label = MODE_LABELS[type] || type;
+        var desc = info.split('：')[1] || info;
+        return '<div class="col" style="min-width:140px;max-width:170px;">' +
+            '<div class="card workflow-type-card p-2 ' + (type === currentType ? 'active' : '') + '" ' +
+            'onclick="selectWorkflowType(\'' + prefix + '\', \'' + type + '\')" data-type="' + type + '">' +
+            '<div class="card-body text-center p-2">' +
+            '<div class="wf-icon mb-1"><i class="bi ' + (WORKFLOW_TYPE_ICONS[type] || 'bi-diagram-3') + ' fs-3"></i></div>' +
+            '<h6 class="mb-0">' + label + '</h6>' +
+            '<small class="text-muted">' + desc + '</small>' +
+            '</div></div></div>';
+    }).join('');
+}
+
+function selectWorkflowType(prefix, type) {
+    document.getElementById(prefix + '-workflow-type').value = type;
+    var container = document.getElementById(prefix + '-workflow-type-selector');
+    container.querySelectorAll('.workflow-type-card').forEach(function(card) {
+        card.classList.toggle('active', card.dataset.type === type);
+    });
+    if (prefix === 'create') onCreateWorkflowTypeChange();
+    else onEditWorkflowTypeChange();
+}
+
+// ===== State =====
+var cachedAgentNames = [], cachedPatterns = [];
+var createPhases = [], editPhases = [];
+
+// ===== Phase CRUD =====
+function createPhase(prefix) {
+    var phases = prefix==='create'?createPhases:editPhases;
+    var wfType = document.getElementById(prefix+'-workflow-type').value;
+    phases.push({phase:phases.length+1,name:'',description:'',mode:wfType,parent_phase:null,conditions_json:null,consensus_threshold:0.5,estimated_duration_hours:24,max_duration_hours:48,sort_order:(phases.length+1)*10,agents:[]});
+    renderPhases(prefix);
+}
+function removePhase(prefix, index) {
+    var phases = prefix==='create'?createPhases:editPhases;
+    if (!confirm('确定要删除阶段 "'+(phases[index].name||'阶段 '+(index+1))+'" 吗？')) return;
+    phases.splice(index,1); phases.forEach(function(p,i){p.phase=i+1;p.sort_order=(i+1)*10;});
+    renderPhases(prefix);
+}
+function updatePhaseField(prefix,index,field,value){var p=(prefix==='create'?createPhases:editPhases)[index];p[field]=value;updateOrchPreview(prefix);}
+function updatePhaseConditions(prefix,index){var p=(prefix==='create'?createPhases:editPhases)[index];try{p.conditions_json=JSON.parse(document.getElementById(prefix+'-phase-'+index+'-conditions').value)}catch(e){}updateOrchPreview(prefix);}
+
+function addAgentToPhase(prefix, phaseIndex) {
+    var phases = prefix==='create'?createPhases:editPhases;
+    var phase = phases[phaseIndex];
+    var sel = document.getElementById(prefix+'-phase-'+phaseIndex+'-agent-select');
+    if (!sel||!sel.value){alert('请选择智能体');return;}
+    if (phase.agents.some(function(a){return a.agent_name===sel.value})){alert('该智能体已在此阶段中');return;}
+    var roleInp = document.getElementById(prefix+'-phase-'+phaseIndex+'-agent-role');
+    var leadChk = document.getElementById(prefix+'-phase-'+phaseIndex+'-agent-lead');
+    var wtInp = document.getElementById(prefix+'-phase-'+phaseIndex+'-agent-weight');
+    phase.agents.push({agent_name:sel.value,role:roleInp?roleInp.value.trim()||sel.value:sel.value,sort_order:phase.agents.length,is_lead:leadChk?leadChk.checked:false,weight:wtInp?parseFloat(wtInp.value)||1.0:1.0,conditions_json:null});
+    sel.value='';if(roleInp)roleInp.value='';if(leadChk)leadChk.checked=false;if(wtInp)wtInp.value='1.0';
+    renderPhases(prefix);
+}
+function removeAgentFromPhase(prefix,phaseIndex,agentIndex){(prefix==='create'?createPhases:editPhases)[phaseIndex].agents.splice(agentIndex,1);renderPhases(prefix);}
+
+function loadAgentOptionsForSelect(sel) {
+    if (cachedAgentNames.length>0){cachedAgentNames.forEach(function(n){var o=document.createElement('option');o.value=n;o.textContent=n;sel.appendChild(o)});return;}
+    fetch('/api/agents').then(function(r){return r.json()}).then(function(list){cachedAgentNames=list.map(function(a){return a.name||a.agent_id||a});cachedAgentNames.forEach(function(n){var o=document.createElement('option');o.value=n;o.textContent=n;sel.appendChild(o)})}).catch(function(){});
+}
+
+// ===== Rendering =====
+function renderPhases(prefix){
+    var phases=prefix==='create'?createPhases:editPhases;
+    var container=document.getElementById(prefix+'-phases-container');
+    var empty=document.getElementById(prefix+'-phases-empty');
+    if(!container)return;
+    if(phases.length===0){container.innerHTML='';if(empty)empty.style.display='block';var pv=document.getElementById(prefix+'-orch-preview');if(pv)pv.style.display='none';return;}
+    if(empty)empty.style.display='none';
+    container.innerHTML=phases.map(function(p,i){return renderPhaseCard(prefix,p,i)}).join('');
+    phases.forEach(function(p,i){var sel=document.getElementById(prefix+'-phase-'+i+'-agent-select');if(sel&&sel.options.length<=1)loadAgentOptionsForSelect(sel)});
+    updateOrchPreview(prefix);
+}
+
+function renderPhaseCard(prefix,phase,index){
+    var wfType=document.getElementById(prefix+'-workflow-type').value;
+    var rules=getModeRules(phase.mode||wfType);
+    var modeLabel=getWorkflowModeLabel(phase.mode||wfType);
+    var phases=prefix==='create'?createPhases:editPhases;
+    var h='<div class="card phase-card mode-'+(phase.mode||wfType)+'">';
+    h+='<div class="card-header d-flex justify-content-between align-items-center">';
+    h+='<h6 class="mb-0"><span class="badge bg-primary me-2">阶段 '+(index+1)+'</span>'+esc(phase.name||'未命名')+'</h6>';
+    h+='<div><span class="badge bg-info me-2">'+modeLabel+'</span>';
+    h+='<button type="button" class="btn btn-sm btn-outline-danger" onclick="removePhase(\''+prefix+'\','+index+')"><i class="bi bi-x"></i></button>';
+    h+='</div></div><div class="card-body">';
+    h+='<div class="row g-2 mb-3">';
+    h+='<div class="col-md-3"><label class="form-label small">阶段名称</label><input type="text" class="form-control form-control-sm" id="'+prefix+'-phase-'+index+'-name" value="'+esc(phase.name)+'" onchange="updatePhaseField(\''+prefix+'\','+index+',\'name\',this.value)" placeholder="输入阶段名称"></div>';
+    h+='<div class="col-md-2"><label class="form-label small">编排模式</label><select class="form-select form-select-sm" id="'+prefix+'-phase-'+index+'-mode" onchange="updatePhaseField(\''+prefix+'\','+index+',\'mode\',this.value);renderPhases(\''+prefix+'\')">';
+    for(var k in MODE_LABELS)h+='<option value="'+k+'"'+(phase.mode===k?' selected':'')+'>'+MODE_LABELS[k]+'</option>';
+    h+='</select></div>';
+    if(rules.showParentPhase){
+        h+='<div class="col-md-2"><label class="form-label small">父阶段</label><select class="form-select form-select-sm" id="'+prefix+'-phase-'+index+'-parent" onchange="updatePhaseField(\''+prefix+'\','+index+',\'parent_phase\',this.value?parseInt(this.value):null)">';
+        h+='<option value="">根阶段</option>';
+        phases.forEach(function(p,i){if(i!==index)h+='<option value="'+(i+1)+'"'+(phase.parent_phase===(i+1)?' selected':'')+'>阶段'+(i+1)+':'+esc(p.name||'未命名')+'</option>';});
+        h+='</select></div>';
+    }
+    if(rules.showThreshold)h+='<div class="col-md-2"><label class="form-label small">共识阈值</label><input type="number" class="form-control form-control-sm" id="'+prefix+'-phase-'+index+'-threshold" value="'+(phase.consensus_threshold||0.5)+'" min="0" max="1" step="0.05" onchange="updatePhaseField(\''+prefix+'\','+index+',\'consensus_threshold\',parseFloat(this.value)||0.5)"></div>';
+    h+='<div class="col-md-1"><label class="form-label small">排序</label><input type="number" class="form-control form-control-sm" id="'+prefix+'-phase-'+index+'-sort" value="'+(phase.sort_order||(index+1)*10)+'" onchange="updatePhaseField(\''+prefix+'\','+index+',\'sort_order\',parseInt(this.value)||0)"></div>';
+    h+='</div>';
+    h+='<div class="mb-2"><input type="text" class="form-control form-control-sm" id="'+prefix+'-phase-'+index+'-desc" value="'+esc(phase.description||'')+'" placeholder="阶段描述" onchange="updatePhaseField(\''+prefix+'\','+index+',\'description\',this.value)"></div>';
+    if(rules.showConditions)h+='<div class="mb-2"><label class="form-label small">条件配置 (JSON)</label><textarea class="form-control form-control-sm" id="'+prefix+'-phase-'+index+'-conditions" rows="2" placeholder=\'[{"keyword":"bug","branch":"tech"}]\' onchange="updatePhaseConditions(\''+prefix+'\','+index+')">'+(phase.conditions_json?JSON.stringify(phase.conditions_json,null,2):'')+'</textarea></div>';
+
+    h+='<div class="mt-3"><label class="form-label small fw-bold"><i class="bi bi-people"></i> 智能体</label>';
+    h+='<div class="agent-grid">';
+    h+='<div class="agent-grid-header"><span class="ag-col-name">智能体</span><span class="ag-col-role">角色</span>';
+    if(rules.showIsLead)h+='<span class="ag-col-lead">主智能体</span>';
+    if(rules.showWeight)h+='<span class="ag-col-weight">权重</span>';
+    h+='<span class="ag-col-actions">操作</span></div>';
+    if(phase.agents.length===0){h+='<div class="agent-grid-empty">暂无智能体</div>';}else{
+        phase.agents.forEach(function(a,ai){
+            h+='<div class="agent-grid-row"><span class="ag-col-name"><strong>'+esc(a.agent_name)+'</strong></span>';
+            h+='<span class="ag-col-role">'+esc(a.role||'')+'</span>';
+            if(rules.showIsLead)h+='<span class="ag-col-lead">'+(a.is_lead?'<span class="badge bg-warning text-dark">主</span>':'-')+'</span>';
+            if(rules.showWeight)h+='<span class="ag-col-weight">'+(a.weight||1.0)+'</span>';
+            h+='<span class="ag-col-actions"><button type="button" class="btn btn-sm btn-outline-danger py-0" onclick="removeAgentFromPhase(\''+prefix+'\','+index+','+ai+')"><i class="bi bi-x"></i></button></span></div>';
+        });
+    }
+    h+='</div>';
+    h+='<div class="phase-add-agent-row"><div class="row g-1 align-items-end">';
+    h+='<div class="col-md-3"><select class="form-select form-select-sm" id="'+prefix+'-phase-'+index+'-agent-select"><option value="">-- 选择智能体 --</option></select></div>';
+    h+='<div class="col-md-3"><input type="text" class="form-control form-control-sm" id="'+prefix+'-phase-'+index+'-agent-role" placeholder="角色"></div>';
+    if(rules.showIsLead)h+='<div class="col-md-2"><div class="form-check"><input class="form-check-input" type="checkbox" id="'+prefix+'-phase-'+index+'-agent-lead"><label class="form-check-label small">主智能体</label></div></div>';
+    if(rules.showWeight)h+='<div class="col-md-2"><input type="number" class="form-control form-control-sm" id="'+prefix+'-phase-'+index+'-agent-weight" value="1.0" min="0" max="1" step="0.1" placeholder="权重"></div>';
+    h+='<div class="col-md-2"><button type="button" class="btn btn-sm btn-success w-100" onclick="addAgentToPhase(\''+prefix+'\','+index+')"><i class="bi bi-plus"></i> 添加</button></div>';
+    h+='</div></div></div></div></div>';
+    return h;
+}
+
+// ===== Orchestration Preview =====
+function updateOrchPreview(prefix){
+    var wfType=document.getElementById(prefix+'-workflow-type');
+    if(!wfType)return;
+    var type=wfType.value;
+    var phases=prefix==='create'?createPhases:editPhases;
+    var container=document.getElementById(prefix+'-orch-preview');
+    var content=document.getElementById(prefix+'-orch-preview-content');
+    if(!container||!content||phases.length===0){if(container)container.style.display='none';return;}
+    container.style.display='block';
+    function card(p,i){
+        var ml=getWorkflowModeLabel(p.mode||type);
+        var ags=p.agents||[];
+        var lead=ags.find(function(a){return a.is_lead});
+        var names=ags.map(function(a){return a.agent_name});
+        return '<div class="border rounded p-2 bg-white text-center" style="min-width:120px;flex:1">'+
+            '<div class="fw-bold small text-primary">阶段 '+(i+1)+'</div>'+
+            '<div class="small fw-medium">'+esc(p.name||'')+'</div>'+
+            '<div class="mt-1 d-flex flex-wrap justify-content-center gap-1">'+
+            (lead?'<span class="badge bg-warning text-dark" style="font-size:0.65rem">⭐ '+esc(lead.agent_name)+'</span>':'')+
+            (p.mode&&p.mode!==type?'<span class="badge bg-info" style="font-size:0.65rem">'+ml+'</span>':'')+
+            '</div>'+(names.length>0?'<div class="mt-1 small text-muted border-top pt-1">'+names.join(', ')+'</div>':'')+'</div>';
+    }
+    var tl=getWorkflowModeLabel(type);
+    var html='<div class="text-muted small mb-2"><i class="bi bi-diagram-3"></i> '+tl+' 编排</div>';
+    switch(type){
+        case 'sequential':
+            html+='<div class="d-flex align-items-stretch flex-wrap gap-2">';
+            phases.forEach(function(p,i){html+=card(p,i);if(i<phases.length-1)html+='<div class="d-flex align-items-center"><i class="bi bi-arrow-right text-muted fs-5"></i></div>';});
+            html+='</div>';break;
+        case 'parallel':
+            html+='<div class="text-center mb-2"><i class="bi bi-arrow-down text-muted"></i> 任务分解</div>';
+            html+='<div class="d-flex justify-content-center flex-wrap gap-3">';
+            phases.forEach(function(p,i){html+=card(p,i);});html+='</div>';
+            html+='<div class="text-center mt-2"><i class="bi bi-arrow-down text-muted"></i> 结果聚合</div>';break;
+        case 'conditional':
+            html+='<div class="d-flex flex-column gap-2">';
+            phases.forEach(function(p,i){if(i>0)html+='<div class="text-center text-warning small fw-bold"><i class="bi bi-question-diamond"></i> 条件判断?</div>';html+='<div class="d-flex justify-content-center">'+card(p,i)+'</div>';});
+            html+='</div>';break;
+        case 'hierarchical':
+            var roots=[],children={};
+            phases.forEach(function(p,i){var pp=p.parent_phase;if(pp){var pi=phases.findIndex(function(p2){return p2.phase===pp});if(pi>=0&&pi!==i){(children[pi]=children[pi]||[]).push(i);return;}}roots.push(i);});
+            if(roots.length===0&&phases.length===1)roots.push(0);
+            if(roots.length===0&&phases.length>1){roots.push(0);for(var i=1;i<phases.length;i++){(children[i-1]=children[i-1]||[]).push(i);}}
+            function renderTree(idx,depth){if(depth===undefined)depth=0;var p=phases[idx];var h='<div class="d-flex flex-column align-items-center">';h+='<div class="small text-muted mb-1" style="font-size:0.7rem">层级 '+(depth+1)+'</div>';h+=card(p,idx);var kids=children[idx]||[];if(kids.length){h+='<div class="text-center small text-muted py-1"><i class="bi bi-arrow-down"></i></div>';h+='<div class="d-flex flex-wrap justify-content-center gap-3 ps-3" style="border-left:2px solid #dee2e6;padding-left:16px;margin-left:8px">';kids.forEach(function(k){h+=renderTree(k,depth+1)});h+='</div>';}return h+'</div>';}
+            html+='<div class="d-flex flex-wrap justify-content-center gap-3 align-items-start">';roots.forEach(function(r){html+=renderTree(r,0)});html+='</div>';break;
+        case 'consensus':
+            html+='<div class="d-flex justify-content-center gap-3 mb-3 flex-wrap">';phases.forEach(function(p,i){html+=card(p,i)});html+='</div>';
+            html+='<div class="text-center"><i class="bi bi-arrow-down text-muted fs-5"></i></div>';
+            html+='<div class="text-center my-2"><span class="badge bg-warning text-dark fs-6 p-2">共识投票 &gt; 50%</span></div>';
+            html+='<div class="text-center"><i class="bi bi-arrow-down text-muted fs-5"></i></div>';
+            html+='<div class="text-center"><span class="badge bg-success fs-6 p-2">最终结果</span></div>';break;
+    }
+    content.innerHTML=html;
+}
+
+// ===== Pattern Cards =====
+function loadPatternCards(prefix){
+    var container=document.getElementById(prefix+'-pattern-cards');
+    if(!container)return;
+    if(cachedPatterns.length>0){renderPatternCards(prefix,cachedPatterns);return;}
+    fetch('/api/orchestration-patterns').then(function(r){return r.json()}).then(function(p){cachedPatterns=p;renderPatternCards(prefix,p)}).catch(function(){container.innerHTML='<div class="text-muted small py-2">模板加载失败</div>'});
+}
+function renderPatternCards(prefix,patterns){
+    var container=document.getElementById(prefix+'-pattern-cards');
+    if(!container)return;
+    var selType=document.getElementById(prefix+'-workflow-type').value;
+    container.innerHTML=patterns.map(function(p){
+        return '<div class="card pattern-card '+(p.workflow_type===selType?'active':'')+'" onclick="selectPattern(\''+prefix+'\',\''+p.pattern_id+'\')" data-pattern-id="'+p.pattern_id+'" data-workflow-type="'+p.workflow_type+'">'+
+        '<div class="card-body text-center"><div class="card-icon" style="color:'+(p.color||'#4361ee')+'"><i class="bi '+(p.icon||'bi-diagram-3')+'"></i></div>'+
+        '<h6 class="mt-1">'+(p.display_name||p.name)+'</h6>'+
+        '<small class="text-muted d-block">'+(p.description||'').substring(0,30)+'...</small></div></div>';
+    }).join('');
+}
+
+function selectPattern(prefix,patternId){
+    var pattern=cachedPatterns.find(function(p){return p.pattern_id===patternId});
+    if(!pattern)return;
+    document.getElementById(prefix+'-workflow-type').value=pattern.workflow_type;
+    var container=document.getElementById(prefix+'-pattern-cards');
+    container.querySelectorAll('.pattern-card').forEach(function(c){c.classList.toggle('active',c.dataset.patternId===patternId)});
+    if(prefix==='create'&&pattern.default_phases_json&&pattern.default_phases_json.length){
+        createPhases=pattern.default_phases_json.map(function(dp,i){return{phase:dp.phase||(i+1),name:dp.name||'未命名',mode:dp.mode||pattern.workflow_type||'sequential',description:dp.description||'',parent_phase:dp.parent_phase||null,consensus_threshold:dp.consensus_threshold||0.5,estimated_duration_hours:dp.estimated_duration_hours||24,max_duration_hours:dp.max_duration_hours||48,sort_order:dp.sort_order||(i+1)*10,conditions_json:dp.conditions_json||null,agents:(dp.agents||[]).map(function(a){return Object.assign({},a)})}});
+    }
+    if(prefix==='create')onCreateWorkflowTypeChange();else onEditWorkflowTypeChange();
+}
+
+function onCreateWorkflowTypeChange(){
+    var type=document.getElementById('create-workflow-type').value;
+    document.getElementById('create-advanced-config').style.display=(type==='parallel'||type==='hierarchical')?'flex':'none';
+    var c=document.getElementById('create-pattern-cards');if(c)c.querySelectorAll('.pattern-card').forEach(function(card){card.classList.toggle('active',card.dataset.workflowType===type)});
+    var sel=document.getElementById('create-workflow-type-selector');if(sel)sel.querySelectorAll('.workflow-type-card').forEach(function(card){card.classList.toggle('active',card.dataset.type===type)});
+    renderPhases('create');
+}
+function onEditWorkflowTypeChange(){
+    var type=document.getElementById('edit-workflow-type').value;
+    document.getElementById('edit-advanced-config').style.display=(type==='parallel'||type==='hierarchical')?'flex':'none';
+    var c=document.getElementById('edit-pattern-cards');if(c)c.querySelectorAll('.pattern-card').forEach(function(card){card.classList.toggle('active',card.dataset.workflowType===type)});
+    var sel=document.getElementById('edit-workflow-type-selector');if(sel)sel.querySelectorAll('.workflow-type-card').forEach(function(card){card.classList.toggle('active',card.dataset.type===type)});
+    renderPhases('edit');
+}
+
+// ===== View Squad Detail =====
+function viewSquadDetail(squadId){
+    fetch('/api/squads/'+squadId).then(function(r){return r.json()}).then(function(data){
+        if(data.error){alert('加载失败: '+data.error);return;}
+        var phases=data.phases||[],wfType=data.workflow_type||'sequential',typeLabel=getWorkflowModeLabel(wfType);
+        var ph='';
+        if(phases.length>0){
+            phases.forEach(function(p,i){
+                var ml=getWorkflowModeLabel(p.mode||wfType),ags=p.agents||[],lead=ags.find(function(a){return a.is_lead});
+                ph+='<div class="border rounded p-2 bg-white mb-2"><div class="fw-bold small text-primary">阶段 '+(i+1)+': '+esc(p.name||'')+'</div>'+
+                    '<div class="small text-muted">'+esc(p.description||'')+'</div>'+
+                    '<div class="mt-1 d-flex flex-wrap gap-1"><span class="badge bg-secondary" style="font-size:0.65rem">'+ml+'</span>'+
+                    (lead?'<span class="badge bg-warning text-dark" style="font-size:0.65rem">⭐ '+esc(lead.agent_name)+'</span>':'')+'</div>'+
+                    (ags.length>0?'<div class="mt-1 small">'+ags.map(function(a){return '<span class="badge bg-light text-dark me-1">'+esc(a.agent_name)+'</span>'}).join('')+'</div>':'')+'</div>';
+            });
+        }else{ph='<p class="text-muted">暂无阶段定义</p>';}
+        document.getElementById('squadDetailContent').innerHTML=
+            '<div class="row"><div class="col-md-8"><h4>'+esc(data.name)+'</h4><p class="text-muted">'+esc(data.description||'暂无描述')+'</p>'+
+            '<div class="row mb-4"><div class="col-6"><small class="text-muted">ID</small><div><code>'+esc(data.squad_id)+'</code></div></div>'+
+            '<div class="col-3"><small class="text-muted">版本</small><div>'+esc(data.version)+'</div></div>'+
+            '<div class="col-3"><small class="text-muted">状态</small><div><span class="badge bg-'+(data.status==='active'?'success':data.status==='inactive'?'danger':'warning')+'">'+(data.status==='active'?'活跃':data.status==='inactive'?'停用':'草稿')+'</span></div></div></div>'+
+            '<h6><i class="bi bi-diagram-3"></i> 阶段与智能体</h6>'+ph+'</div><div class="col-md-4">'+
+            '<div class="card"><div class="card-header"><h6 class="mb-0"><i class="bi bi-info-circle"></i> 编排信息</h6></div>'+
+            '<div class="card-body"><div class="mb-2"><span class="badge bg-primary">'+typeLabel+'</span></div>'+
+            '<div class="mb-2"><small class="text-muted">最大并行智能体: '+(data.max_parallel_agents||1)+'</small></div>'+
+            '<div><small class="text-muted">预估工期: '+(data.estimated_duration_days||'-')+' 天</small></div></div></div>'+
+            '<div class="card mt-3"><div class="card-header"><h6 class="mb-0">统计信息</h6></div>'+
+            '<div class="card-body"><div class="d-flex justify-content-between mb-2"><span>执行次数:</span><strong>'+(data.execution_count||0)+'</strong></div>'+
+            '<div class="d-flex justify-content-between mb-2"><span>成功次数:</span><strong>'+(data.success_count||0)+'</strong></div>'+
+            '<div class="d-flex justify-content-between"><span>创建时间:</span><span>'+(data.created_at?new Date(data.created_at).toLocaleDateString():'未知')+'</span></div></div></div></div></div>';
+        new bootstrap.Modal(document.getElementById('squadDetailModal')).show();
+    }).catch(function(err){console.error(err);alert('加载失败')});
+}
+
+
+// ===== Create Squad =====
+function showCreateSquadModal(){
+    createPhases=[];
+    document.getElementById('create-squad-name').value='';
+    document.getElementById('create-squad-desc').value='';
+    document.getElementById('create-squad-version').value='1.0.0';
+    document.getElementById('create-squad-status').value='draft';
+    document.getElementById('create-squad-category').value='';
+    document.getElementById('create-workflow-type').value='sequential';
+    document.getElementById('create-max-parallel').value='3';
+    document.getElementById('create-est-duration').value='7';
+    document.getElementById('create-advanced-config').style.display='none';
+    document.getElementById('create-orch-preview').style.display='none';
+    renderWorkflowTypeSelector('create');renderPhases('create');loadPatternCards('create');
+    new bootstrap.Modal(document.getElementById('createSquadModal')).show();
+}
+
+function createSquad(){
+    var name=document.getElementById('create-squad-name').value.trim();
+    if(!name){alert('Squad名称不能为空');return;}
+    createPhases.forEach(function(p,i){var el=document.getElementById('create-phase-'+i+'-name');if(el)p.name=el.value.trim()});
+    if(createPhases.length===0){alert('请至少添加一个阶段');return;}
+    for(var i=0;i<createPhases.length;i++){if(!createPhases[i].name){alert('阶段 '+(i+1)+' 名称不能为空');return;}}
+    var phasesData=createPhases.map(function(p){return{phase:p.phase,name:p.name,description:p.description||'',mode:p.mode,parent_phase:p.parent_phase||null,conditions_json:p.conditions_json||null,consensus_threshold:p.consensus_threshold||0.5,estimated_duration_hours:p.estimated_duration_hours||24,max_duration_hours:p.max_duration_hours||48,sort_order:p.sort_order||p.phase*10,agents:(p.agents||[]).map(function(a){return{agent_name:a.agent_name,role:a.role||a.agent_name,sort_order:a.sort_order||0,is_lead:a.is_lead||false,weight:a.weight||1.0,conditions_json:a.conditions_json||null}})}});
+    var payload={squad_id:'squad-'+Date.now().toString(36),name:name,description:document.getElementById('create-squad-desc').value.trim(),version:document.getElementById('create-squad-version').value.trim()||'1.0.0',status:document.getElementById('create-squad-status').value,category:document.getElementById('create-squad-category').value.trim()||null,workflow_type:document.getElementById('create-workflow-type').value||'sequential',max_parallel_agents:parseInt(document.getElementById('create-max-parallel').value)||1,estimated_duration_days:parseInt(document.getElementById('create-est-duration').value)||7,phases:phasesData};
+    var btn=document.querySelector('#createSquadModal .btn-primary'),orig=btn.innerHTML;
+    btn.innerHTML='<span class="spinner-border spinner-border-sm"></span> 创建中...';btn.disabled=true;
+    fetch('/api/squads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+        .then(function(r){return r.json()}).then(function(resp){if(resp.success){bootstrap.Modal.getInstance(document.getElementById('createSquadModal')).hide();setTimeout(function(){window.location.reload()},500)}else{alert('创建失败: '+(resp.error||'未知错误'));btn.innerHTML=orig;btn.disabled=false}})
+        .catch(function(err){alert('创建失败: '+err.message);btn.innerHTML=orig;btn.disabled=false});
+}
+
+// ===== Edit Squad =====
+function editSquad(squadId){
+    fetch('/api/squads/'+squadId).then(function(r){return r.json()}).then(function(data){
+        if(data.error){alert('加载Squad失败: '+data.error);return;}
+        document.getElementById('edit-squad-id').value=data.squad_id||'';
+        document.getElementById('edit-squad-name').value=data.name||'';
+        document.getElementById('edit-squad-version').value=data.version||'1.0.0';
+        document.getElementById('edit-squad-desc').value=data.description||'';
+        document.getElementById('edit-squad-status').value=data.status||'active';
+        document.getElementById('edit-squad-category').value=data.category||'';
+        document.getElementById('edit-workflow-type').value=data.workflow_type||'sequential';
+        document.getElementById('edit-max-parallel').value=data.max_parallel_agents||3;
+        document.getElementById('edit-est-duration').value=data.estimated_duration_days||7;
+        editPhases=(data.phases||[]).map(function(p){return{phase:p.phase,name:p.name||'',description:p.description||'',mode:p.mode||data.workflow_type||'sequential',parent_phase:p.parent_phase||null,conditions_json:p.conditions_json||null,consensus_threshold:p.consensus_threshold||0.5,estimated_duration_hours:p.estimated_duration_hours||24,max_duration_hours:p.max_duration_hours||48,sort_order:p.sort_order||p.phase*10,agents:(p.agents||[]).map(function(a){return{agent_name:a.agent_name,role:a.role||a.agent_name,sort_order:a.sort_order||0,is_lead:a.is_lead||false,weight:a.weight||1.0,conditions_json:a.conditions_json||null}})}});
+        renderWorkflowTypeSelector('edit');onEditWorkflowTypeChange();loadPatternCards('edit');
+        new bootstrap.Modal(document.getElementById('editSquadModal')).show();
+    }).catch(function(err){alert('加载Squad失败: '+err.message)});
+}
+
+function submitEditSquad(){
+    var squadId=document.getElementById('edit-squad-id').value;if(!squadId)return;
+    editPhases.forEach(function(p,i){var el=document.getElementById('edit-phase-'+i+'-name');if(el)p.name=el.value.trim()});
+    var name=document.getElementById('edit-squad-name').value.trim();
+    if(!name){alert('Squad名称不能为空');return;}
+    if(editPhases.length===0){alert('请至少添加一个阶段');return;}
+    for(var i=0;i<editPhases.length;i++){if(!editPhases[i].name){alert('阶段 '+(i+1)+' 名称不能为空');return;}}
+    var phasesData=editPhases.map(function(p){return{phase:p.phase,name:p.name,description:p.description||'',mode:p.mode,parent_phase:p.parent_phase||null,conditions_json:p.conditions_json||null,consensus_threshold:p.consensus_threshold||0.5,estimated_duration_hours:p.estimated_duration_hours||24,max_duration_hours:p.max_duration_hours||48,sort_order:p.sort_order||p.phase*10,agents:(p.agents||[]).map(function(a){return{agent_name:a.agent_name,role:a.role||a.agent_name,sort_order:a.sort_order||0,is_lead:a.is_lead||false,weight:a.weight||1.0,conditions_json:a.conditions_json||null}})}});
+    var payload={name:name,version:document.getElementById('edit-squad-version').value.trim()||'1.0.0',description:document.getElementById('edit-squad-desc').value.trim(),status:document.getElementById('edit-squad-status').value,category:document.getElementById('edit-squad-category').value.trim()||null,workflow_type:document.getElementById('edit-workflow-type').value||'sequential',max_parallel_agents:parseInt(document.getElementById('edit-max-parallel').value)||1,estimated_duration_days:parseInt(document.getElementById('edit-est-duration').value)||7,phases:phasesData};
+    var btn=document.querySelector('#editSquadModal .btn-primary'),orig=btn.innerHTML;
+    btn.innerHTML='<span class="spinner-border spinner-border-sm"></span> 保存中...';btn.disabled=true;
+    fetch('/api/squads/'+squadId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+        .then(function(r){return r.json()}).then(function(resp){if(resp.success){bootstrap.Modal.getInstance(document.getElementById('editSquadModal')).hide();setTimeout(function(){window.location.reload()},500)}else{alert('更新失败: '+(resp.error||'未知错误'));btn.innerHTML=orig;btn.disabled=false}})
+        .catch(function(err){alert('更新失败: '+err.message);btn.innerHTML=orig;btn.disabled=false});
+}
+
+// ===== Delete Squad =====
+function deleteSquad(squadId){
+    if(!confirm('确定要删除Squad "'+squadId+'" 吗？此操作不可恢复。'))return;
+    fetch('/api/squads/'+squadId,{method:'DELETE'}).then(function(r){return r.json()}).then(function(d){if(d.success)window.location.reload();else alert('删除失败: '+(d.error||'未知错误'))}).catch(function(err){alert('删除失败: '+err.message)});
+}
+
+// ===== Pagination =====
+var squadCurrentPage=1, currentFilter='all';
+
+function getSquadPageSize() {
+    var sel = document.getElementById('squad-page-size');
+    return sel ? parseInt(sel.value) : 12;
+}
+
+function changeSquadPageSize(sel) {
+    initSquadPagination();
+}
+
+function initSquadPagination(){
+    var pageSize=getSquadPageSize();
+    var items=document.querySelectorAll('#squads-container .squad-item');
+    var total=items.length;
+    if(total===0){var _e1=document.getElementById('squadTotal');if(_e1)_e1.textContent='0';var _e2=document.getElementById('squadPageStart');if(_e2)_e2.textContent='0';var _e3=document.getElementById('squadPageEnd');if(_e3)_e3.textContent='0';renderPagination('squadsPagination',1,1,function(){});return;}
+    function getFiltered(){return Array.from(items).filter(function(i){return currentFilter==='all'||i.dataset.status===currentFilter});}
+    function showPage(page){
+        squadCurrentPage=page;
+        var filtered=getFiltered();
+        var totalPages=Math.ceil(filtered.length/pageSize)||1;
+        var start=(page-1)*pageSize,end=Math.min(start+pageSize,filtered.length);
+        items.forEach(function(i){i.style.display='none'});
+        filtered.forEach(function(i,idx){i.style.display=(idx>=start&&idx<end)?'':'none'});
+        document.getElementById('squadTotal').textContent=filtered.length;
+        document.getElementById('squadPageStart').textContent=filtered.length>0?start+1:0;
+        document.getElementById('squadPageEnd').textContent=end;
+        renderPagination('squadsPagination',page,totalPages,showPage);
+    }
+    showPage(1);
+}
+
+function filterSquads(status){currentFilter=status;initSquadPagination();}
+
+// ===== Batch Delete =====
+
+function updateSquadBatchDeleteBtn() {
+    var checked = document.querySelectorAll('.squad-checkbox:checked');
+    var btn = document.getElementById('squad-batch-delete-btn');
+    var count = document.getElementById('squad-selected-count');
+    if (checked.length > 0) {
+        btn.style.display = 'inline-block';
+        count.style.display = 'inline';
+        count.textContent = '已选 ' + checked.length + ' 条';
+    } else {
+        btn.style.display = 'none';
+        count.style.display = 'none';
+    }
+}
+
+function squadBatchDelete() {
+    var checked = document.querySelectorAll('.squad-checkbox:checked');
+    if (!checked.length) return;
+    if (!confirm('确定删除选中的 ' + checked.length + ' 个 Squad？')) return;
+    var ids = [];
+    checked.forEach(function(cb) { ids.push(cb.value); });
+    fetch('/api/squads/batch-delete', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({squad_ids: ids}),
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.success) {
+            window.location.reload();
+        } else {
+            alert('删除失败: ' + (d.error || '未知错误'));
+        }
+    }).catch(function(err) { alert('删除失败: ' + err.message); });
+}
+
+// ===== 拓扑反馈 =====
+var topoFbLoaded = false;
+
+function loadTopoFbStats() {
+    fetch('/api/topology-feedback/stats').then(function(r){return r.json()}).then(function(s) {
+        document.getElementById('topoFbTotal').textContent = s.total_records || 0;
+        document.getElementById('topoFbAvg').textContent = (s.avg_satisfaction || 0).toFixed(2);
+        document.getElementById('topoFbUnique').textContent = s.unique_signatures || 0;
+        document.getElementById('topoFbTotalBadge').textContent = s.total_records || 0;
+    }).catch(function(){});
+}
+
+function loadTopoFbRecords() {
+    if (topoFbLoaded) return;
+    var tbody = document.getElementById('topoFbTableBody');
+    var empty = document.getElementById('topoFbEmpty');
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary me-2"></div><span class="text-muted">加载中...</span></td></tr>';
+    empty.style.display = 'none';
+
+    fetch('/api/topology-feedback?limit=50').then(function(r){return r.json()}).then(function(data) {
+        var items = data || [];
+        if (items.length === 0) {
+            tbody.innerHTML = '';
+            empty.style.display = '';
+            return;
+        }
+        topoFbLoaded = true;
+        document.getElementById('topoFbTotalBadge').textContent = items.length;
+        tbody.innerHTML = items.map(function(r) {
+            var satClass = r.satisfaction >= 0.8 ? 'success' : r.satisfaction >= 0.5 ? 'warning' : 'danger';
+            var topoStr = '';
+            try { var t = typeof r.topology === 'string' ? JSON.parse(r.topology) : r.topology; topoStr = t.phases ? t.phases.length + ' 阶段' : '--'; } catch(e) { topoStr = '--'; }
+            var sig = (r.task_signature || '').substring(0, 30);
+            var eid = (r.execution_id || '').substring(0, 16);
+            return '<tr>' +
+                '<td><small class="text-muted" title="' + esc(r.task_signature || '') + '">' + esc(sig) + (sig.length >= 30 ? '...' : '') + '</small></td>' +
+                '<td><small>' + topoStr + '</small></td>' +
+                '<td class="text-center"><span class="badge bg-' + satClass + '">' + (r.satisfaction || 0).toFixed(2) + '</span></td>' +
+                '<td><code class="small">' + esc(eid) + (eid.length >= 16 ? '...' : '') + '</code></td>' +
+                '<td><small class="text-muted">' + (r.created_at ? new Date(r.created_at).toLocaleString() : '--') + '</small></td></tr>';
+        }).join('');
+    }).catch(function(err) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4"><i class="bi bi-exclamation-triangle me-2"></i>' + esc(err.message) + '</td></tr>';
+    });
+}
+
+// ===== Init =====
+document.addEventListener('DOMContentLoaded',function(){
+    initSquadPagination();loadTopoFbStats();
+    var p=new URLSearchParams(window.location.search).get('filter');if(p)filterSquads(p);
+    var collapseEl=document.getElementById('topoFeedbackCollapse');
+    collapseEl.addEventListener('shown.bs.collapse',function(){loadTopoFbRecords()});
+});
+
+// ===== Globals =====
+window.viewSquadDetail=viewSquadDetail;window.submitEditSquad=submitEditSquad;window.deleteSquad=deleteSquad;window.showCreateSquadModal=showCreateSquadModal;
+window.createSquad=createSquad;window.createPhase=createPhase;window.removePhase=removePhase;
+window.addAgentToPhase=addAgentToPhase;window.removeAgentFromPhase=removeAgentFromPhase;
+window.updatePhaseField=updatePhaseField;window.updatePhaseConditions=updatePhaseConditions;
+window.onCreateWorkflowTypeChange=onCreateWorkflowTypeChange;window.onEditWorkflowTypeChange=onEditWorkflowTypeChange;
+window.getWorkflowModeLabel=getWorkflowModeLabel;window.selectPattern=selectPattern;
+window.selectWorkflowType=selectWorkflowType;window.renderWorkflowTypeSelector=renderWorkflowTypeSelector;
+window.loadPatternCards=loadPatternCards;window.filterSquads=filterSquads;
+window.loadMostActiveSquads=function(){var el=document.querySelector('.card.mt-4');if(el)el.scrollIntoView({behavior:'smooth'})};
+window.changeSquadPageSize=changeSquadPageSize;
+</script>
+{% endblock %}

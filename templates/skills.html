@@ -1,0 +1,364 @@
+{% extends "base.html" %}
+{% block title %}技能管理{% endblock %}
+{% block page_title %}<i class="bi bi-tools"></i> 技能管理{% endblock %}
+
+{% block content %}
+<div class="row g-4 mb-4">
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(67,97,238,0.1);color:#4361ee;"><i class="bi bi-tools"></i></div>
+            <div>
+                <div class="stat-badge-value">{{ skills_stats.total_skills|default(0)|format_number }}</div>
+                <div class="stat-badge-label">总技能数</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(16,185,129,0.1);color:#10b981;"><i class="bi bi-check-circle"></i></div>
+            <div>
+                <div class="stat-badge-value">{{ (skills_stats.by_frequency.get('高频使用', 0) + skills_stats.by_frequency.get('中频使用', 0) + skills_stats.by_frequency.get('低频使用', 0))|default(0) }}</div>
+                <div class="stat-badge-label">已使用</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(100,116,139,0.1);color:#64748b;"><i class="bi bi-clock"></i></div>
+            <div>
+                <div class="stat-badge-value">{{ skills_stats.by_frequency.get('未使用', 0)|default(0) }}</div>
+                <div class="stat-badge-label">未使用</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="stat-badge">
+            <div class="stat-badge-icon" style="background:rgba(59,130,246,0.1);color:#3b82f6;"><i class="bi bi-folder"></i></div>
+            <div>
+                <div class="stat-badge-value">{{ skills_stats.by_category|length|default(0) }}</div>
+                <div class="stat-badge-label">分类数量</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h6><i class="bi bi-graph-up me-2"></i>技能使用趋势</h6>
+                <div class="btn-group btn-group-sm">
+                    <button type="button" class="btn btn-outline-primary active" onclick="changeSkillTrendRange('7d', this)">7天</button>
+                    <button type="button" class="btn btn-outline-primary" onclick="changeSkillTrendRange('30d', this)">30天</button>
+                    <button type="button" class="btn btn-outline-primary" onclick="changeSkillTrendRange('90d', this)">90天</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="chart-area"><canvas id="skillTrendChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h6><i class="bi bi-tools me-2"></i>技能列表</h6>
+                <div class="d-flex gap-2">
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-download"></i> 导出</button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="/api/export/skills?format=csv"><i class="bi bi-filetype-csv me-2"></i>导出 CSV</a></li>
+                            <li><a class="dropdown-item" href="/api/export/skills?format=json"><i class="bi bi-filetype-json me-2"></i>导出 JSON</a></li>
+                        </ul>
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary" onclick="refreshSkills()"><i class="bi bi-arrow-clockwise"></i> 刷新</button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                {% if skills and skills[0].error %}
+                    <div class="alert alert-danger m-3"><i class="bi bi-exclamation-triangle me-2"></i>加载技能列表失败: {{ skills[0].error }}</div>
+                {% elif skills %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="skillsTable">
+                            <thead>
+                                <tr><th>名称</th><th>显示名称</th><th>描述</th><th>分类</th><th>使用次数</th><th>最后使用</th><th>操作</th></tr>
+                            </thead>
+                            <tbody id="skillsTableBody">
+                                {% for skill in skills %}
+                                <tr class="skill-row">
+                                    <td>
+                                        <strong>{{ skill.name }}</strong>
+                                        {% if skill.usage_count > 20 %}
+                                            <span class="badge bg-success ms-1">高频</span>
+                                        {% elif skill.usage_count > 5 %}
+                                            <span class="badge bg-warning ms-1">中频</span>
+                                        {% elif skill.usage_count > 0 %}
+                                            <span class="badge bg-info ms-1">低频</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary ms-1">未使用</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ skill.display_name }}</td>
+                                    <td><small class="text-muted">{{ skill.description|truncate(60) }}</small></td>
+                                    <td>{% if skill.category %}<span class="badge bg-light text-dark">{{ skill.category }}</span>{% else %}<span class="text-muted">未分类</span>{% endif %}</td>
+                                    <td><span class="badge {% if skill.usage_count > 0 %}bg-primary{% else %}bg-secondary{% endif %}">{{ skill.usage_count|format_number }}</span></td>
+                                    <td>{% if skill.last_used %}{{ skill.last_used|format_date }}{% else %}<span class="text-muted">从未使用</span>{% endif %}</td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" onclick="viewSkillDetail('{{ skill.skill_id }}')"><i class="bi bi-eye"></i></button>
+                                            <button class="btn btn-outline-secondary" onclick="editSkill('{{ skill.skill_id }}')"><i class="bi bi-pencil"></i></button>
+                                            <button class="btn btn-outline-danger" onclick="deleteSkill('{{ skill.skill_id }}')"><i class="bi bi-trash"></i></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center px-3 py-3 border-top">
+                        <div class="text-muted small">显示 <span id="skillsPageStart">0</span>-<span id="skillsPageEnd">0</span>，共 <span id="skillsTotal">{{ skills|length }}</span> 个</div>
+                        <nav><ul class="pagination pagination-sm mb-0" id="skillsPagination"></ul></nav>
+                    </div>
+                {% else %}
+                    <div class="empty-state"><i class="bi bi-tools"></i><h5>暂无技能数据</h5><p class="text-muted">数据库中暂无技能数据</p></div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header"><h6><i class="bi bi-pie-chart me-2"></i>技能分类分布</h6></div>
+            <div class="card-body">
+                {% if skills_stats.by_category %}
+                    <div class="chart-pie"><canvas id="skillsCategoryChart"></canvas></div>
+                    <div class="mt-3 text-center small">
+                        {% for category, count in skills_stats.by_category.items() %}
+                        <span class="me-2"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{{ loop.index0|get_chart_color }};margin-right:4px;"></span>{{ category }} ({{ count }})</span>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-4 text-muted"><i class="bi bi-pie-chart fa-2x mb-2 d-block"></i>暂无分类数据</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header"><h6><i class="bi bi-star me-2"></i>最常用技能</h6></div>
+            <div class="card-body p-0">
+                {% if skills_stats.top_skills %}
+                    <div class="list-group list-group-flush">
+                        {% for skill in skills_stats.top_skills %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div><div class="fw-bold" style="font-size:0.9rem;">{{ skill.display_name }}</div><small class="text-muted">{{ skill.name }}</small></div>
+                            <div class="text-end"><span class="badge bg-primary rounded-pill">{{ skill.usage_count }}</span>{% if skill.last_used %}<small class="text-muted d-block mt-1" style="font-size:0.7rem;">{{ skill.last_used|format_date }}</small>{% endif %}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-4 text-muted"><i class="bi bi-star mb-2 d-block"></i>暂无使用数据</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Skill Detail Modal -->
+<div class="modal fade" id="skillDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-eye me-2"></i>技能详情</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="skillDetailContent"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Skill Modal -->
+<div class="modal fade" id="editSkillModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>编辑技能</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editSkillForm">
+                    <input type="hidden" id="edit-skill-id">
+                    <div class="row"><div class="col-md-6 mb-3"><label class="form-label small">技能名称 <span class="text-danger">*</span></label><input type="text" class="form-control" id="edit-skill-name" required></div>
+                    <div class="col-md-6 mb-3"><label class="form-label small">显示名称</label><input type="text" class="form-control" id="edit-skill-display-name"></div></div>
+                    <div class="mb-3"><label class="form-label small">描述</label><textarea class="form-control" id="edit-skill-desc" rows="3"></textarea></div>
+                    <div class="row"><div class="col-md-6 mb-3"><label class="form-label small">分类</label><input type="text" class="form-control" id="edit-skill-category"></div>
+                    <div class="col-md-6 mb-3"><label class="form-label small">维护智能体</label><input type="text" class="form-control" id="edit-skill-maintainer"></div></div>
+                    <div class="mb-3"><label class="form-label small">参数提示</label><input type="text" class="form-control" id="edit-skill-arg-hint"></div>
+                    <div class="mb-3"><label class="form-label small">允许工具</label><input type="text" class="form-control" id="edit-skill-tools"></div>
+                    <div class="mb-3"><label class="form-label small">内容</label><textarea class="form-control" id="edit-skill-content" rows="8"></textarea></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="submitEditSkill()"><i class="bi bi-check-lg"></i> 保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var skillTrendChart = null;
+
+function changeSkillTrendRange(range, btn) {
+    btn.closest('.btn-group').querySelectorAll('.btn').forEach(function(b){b.classList.remove('active')});
+    btn.classList.add('active');
+    loadSkillTrendData(range);
+}
+
+function loadSkillTrendData(range) {
+    fetch('/api/skill-usage-trend?range=' + range).then(function(r){return r.json()}).then(function(data) {
+        var ctx = document.getElementById('skillTrendChart');
+        if (!ctx) return;
+        ctx = ctx.getContext('2d');
+        if (skillTrendChart) { skillTrendChart.destroy(); skillTrendChart = null; }
+        skillTrendChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.map(function(d){return d.date}),
+                datasets: [
+                    { label: '使用次数', data: data.map(function(d){return d.usage_count}), borderColor: '#4e73df', backgroundColor: 'rgba(78,115,223,0.05)', yAxisID: 'y', fill: true },
+                    { label: '独特技能数', data: data.map(function(d){return d.unique_skills}), borderColor: '#1cc88a', backgroundColor: 'rgba(28,200,138,0.05)', yAxisID: 'y1', fill: true }
+                ]
+            },
+            options: {
+                maintainAspectRatio: false,
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { type: 'linear', position: 'left', title: { display: true, text: '使用次数' } },
+                    y1: { type: 'linear', position: 'right', title: { display: true, text: '独特技能数' }, grid: { drawOnChartArea: false } }
+                },
+                plugins: { tooltip: { mode: 'index', intersect: false } }
+            }
+        });
+    }).catch(function(e){console.error('Error:', e)});
+}
+
+function refreshSkills() { window.location.reload(); }
+
+function viewSkillDetail(skillId) {
+    fetch('/api/skills/' + skillId).then(function(r){return r.json()}).then(function(skill) {
+        if (skill.error) { alert('加载失败: ' + skill.error); return; }
+        var content = '<div class="row"><div class="col-md-6"><h6>基本信息</h6><table class="table table-sm">' +
+            '<tr><th style="width:35%">ID</th><td><code>' + esc(skill.skill_id) + '</code></td></tr>' +
+            '<tr><th>名称</th><td>' + esc(skill.name) + '</td></tr>' +
+            '<tr><th>显示名称</th><td>' + esc(skill.display_name) + '</td></tr>' +
+            '<tr><th>分类</th><td><span class="badge bg-light text-dark">' + esc(skill.category||'未分类') + '</span></td></tr>' +
+            '<tr><th>维护智能体</th><td>' + esc(skill.maintainer_agent||'未指定') + '</td></tr></table></div>' +
+            '<div class="col-md-6"><h6>使用统计</h6><table class="table table-sm">' +
+            '<tr><th style="width:40%">使用次数</th><td><span class="badge ' + (skill.usage_count>0?'bg-primary':'bg-secondary') + '">' + (skill.usage_count||0) + '</span></td></tr>' +
+            '<tr><th>最后使用</th><td>' + (skill.last_used?formatDate(skill.last_used):'从未使用') + '</td></tr>' +
+            '<tr><th>创建时间</th><td>' + formatDate(skill.created_at) + '</td></tr>' +
+            '<tr><th>更新时间</th><td>' + formatDate(skill.updated_at) + '</td></tr></table></div></div>' +
+            '<div class="mt-3"><h6>描述</h6><p class="text-muted">' + esc(skill.description||'无描述') + '</p></div>' +
+            '<div class="mt-3"><h6>内容</h6><pre class="p-3 bg-light rounded pre-wrap" style="max-height:300px;overflow-y:auto;font-size:0.9rem;">' + esc(skill.content||'无内容') + '</pre></div>' +
+            '<div class="row mt-3"><div class="col-md-6"><h6>参数提示</h6><p><code>' + esc(skill.argument_hint||'无') + '</code></p></div>' +
+            '<div class="col-md-6"><h6>允许工具</h6><p><code>' + esc(skill.allowed_tools||'无限制') + '</code></p></div></div>' +
+            '<div class="mt-3"><h6>标签</h6>' + ((skill.tags&&skill.tags.length) ? skill.tags.map(function(t){return '<span class="badge bg-light text-dark me-1">' + esc(t) + '</span>'}).join('') : '<span class="text-muted">无标签</span>') + '</div>';
+        if (skill.usage_history && skill.usage_history.length) {
+            content += '<div class="mt-4"><h6>最近使用记录</h6><div class="table-responsive"><table class="table table-sm"><thead><tr><th>智能体</th><th>使用时间</th></tr></thead><tbody>' +
+                skill.usage_history.map(function(u){return '<tr><td>' + esc(u.agent_name||'未知') + '</td><td>' + formatDate(u.timestamp) + '</td></tr>'}).join('') + '</tbody></table></div></div>';
+        }
+        document.getElementById('skillDetailContent').innerHTML = content;
+        new bootstrap.Modal(document.getElementById('skillDetailModal')).show();
+    }).catch(function(err){alert('加载失败: ' + err.message)});
+}
+
+function editSkill(skillId) {
+    fetch('/api/skills/' + skillId).then(function(r){return r.json()}).then(function(skill) {
+        if (skill.error) { alert('加载失败: ' + skill.error); return; }
+        document.getElementById('edit-skill-id').value = skill.skill_id||'';
+        document.getElementById('edit-skill-name').value = skill.name||'';
+        document.getElementById('edit-skill-display-name').value = skill.display_name||'';
+        document.getElementById('edit-skill-desc').value = skill.description||'';
+        document.getElementById('edit-skill-category').value = skill.category||'';
+        document.getElementById('edit-skill-maintainer').value = skill.maintainer_agent||'';
+        document.getElementById('edit-skill-arg-hint').value = skill.argument_hint||'';
+        document.getElementById('edit-skill-tools').value = skill.allowed_tools||'';
+        document.getElementById('edit-skill-content').value = skill.content||'';
+        new bootstrap.Modal(document.getElementById('editSkillModal')).show();
+    }).catch(function(err){alert('加载失败: ' + err.message)});
+}
+
+function submitEditSkill() {
+    var id = document.getElementById('edit-skill-id').value;
+    if (!id) return;
+    var data = {
+        name: document.getElementById('edit-skill-name').value.trim(),
+        display_name: document.getElementById('edit-skill-display-name').value.trim(),
+        description: document.getElementById('edit-skill-desc').value.trim(),
+        category: document.getElementById('edit-skill-category').value.trim(),
+        maintainer_agent: document.getElementById('edit-skill-maintainer').value.trim(),
+        argument_hint: document.getElementById('edit-skill-arg-hint').value.trim(),
+        allowed_tools: document.getElementById('edit-skill-tools').value.trim(),
+        content: document.getElementById('edit-skill-content').value
+    };
+    if (!data.name) { alert('技能名称不能为空'); return; }
+    var btn = document.querySelector('#editSkillModal .btn-primary');
+    var orig = btn.innerHTML; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 保存中...'; btn.disabled = true;
+    fetch('/api/skills/' + id, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+        .then(function(r){return r.json()}).then(function(resp) {
+            if (resp.success) { bootstrap.Modal.getInstance(document.getElementById('editSkillModal')).hide(); setTimeout(function(){window.location.reload()},500); }
+            else { alert('更新失败: ' + (resp.error||'未知错误')); btn.innerHTML = orig; btn.disabled = false; }
+        }).catch(function(err){alert('更新失败: ' + err.message); btn.innerHTML = orig; btn.disabled = false;});
+}
+
+function deleteSkill(skillId) {
+    if (!confirm('确定要删除技能 "' + skillId + '" 吗？此操作不可恢复。')) return;
+    fetch('/api/skills/' + skillId, {method:'DELETE'}).then(function(r){return r.json()}).then(function(data) {
+        if (data.success) window.location.reload(); else alert('删除失败: ' + (data.error||'未知错误'));
+    }).catch(function(err){alert('删除失败: ' + err.message)});
+}
+
+// Pagination
+var SKILL_PAGE_SIZE = 10;
+
+function initSkillPagination() {
+    var rows = document.querySelectorAll('#skillsTableBody .skill-row');
+    var total = rows.length, totalPages = Math.ceil(total / SKILL_PAGE_SIZE);
+    if (total <= SKILL_PAGE_SIZE) {
+        document.getElementById('skillsPageStart').textContent = total > 0 ? '1' : '0';
+        document.getElementById('skillsPageEnd').textContent = total;
+        return;
+    }
+    function showPage(page) {
+        var start = (page - 1) * SKILL_PAGE_SIZE, end = Math.min(start + SKILL_PAGE_SIZE, total);
+        rows.forEach(function(row, i){row.style.display = (i >= start && i < end) ? '' : 'none'});
+        document.getElementById('skillsPageStart').textContent = total > 0 ? start + 1 : 0;
+        document.getElementById('skillsPageEnd').textContent = end;
+        renderPagination('skillsPagination', page, totalPages, showPage);
+    }
+    showPage(1);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadSkillTrendData('7d');
+    {% if skills_stats.by_category %}
+    new Chart(document.getElementById('skillsCategoryChart'), {
+        type: 'doughnut',
+        data: {
+            labels: [{% for category in skills_stats.by_category %}'{{ category }}',{% endfor %}],
+            datasets: [{data:[{% for count in skills_stats.by_category.values() %}{{ count }},{% endfor %}], backgroundColor:[{% for i in range(skills_stats.by_category|length) %}'{{ i|get_chart_color }}',{% endfor %}], hoverBorderColor:'rgba(234,236,244,1)'}]
+        },
+        options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '70%' }
+    });
+    {% endif %}
+    initSkillPagination();
+});
+</script>
+{% endblock %}
