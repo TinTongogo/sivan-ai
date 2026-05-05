@@ -189,7 +189,13 @@ class RoutingService:
         success: bool,
         strategy_name: str | None = None,
     ) -> bool:
-        """记录路由反馈，更新策略性能和关键词特征。"""
+        """记录路由反馈，更新策略性能和关键词特征。
+
+        Args:
+            decision_id: 路由决策 ID。
+            success: 是否成功。
+            strategy_name: 可选，策略名称（用于更新自适应权重）。
+        """
         from domain.routing.entity import UserFeedback
 
         feedback = UserFeedback(
@@ -248,13 +254,5 @@ class RoutingService:
         self._domain.add_agent(agent_name, capabilities)
 
     def provide_feedback(self, decision_id: int, success: bool) -> bool:
-        from domain.routing.entity import UserFeedback
-
-        feedback = UserFeedback(
-            decision_id=decision_id,
-            feedback_type="success" if success else "failure",
-            corrected_agent="",
-            feedback_text="",
-            rating=1.0 if success else 0.0,
-        )
-        return self._repo.record_feedback(decision_id, feedback)
+        """简化版反馈接口，委托给 record_feedback。"""
+        return self.record_feedback(decision_id, success)

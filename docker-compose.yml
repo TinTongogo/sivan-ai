@@ -1,0 +1,24 @@
+services:
+  sivan:
+    build: .
+    ports:
+      - "8001:8001"
+    volumes:
+      - sivan_data:/app/data
+    environment:
+      - SIVAN_DB_PATH=/app/data/sivan.db
+      - SIVAN_CHROMA_PATH=/app/data/chroma
+      - SIVAN_ADMIN_HOST=0.0.0.0
+      - SIVAN_API_KEY=${SIVAN_API_KEY:-}
+      - MCP_API_KEY=${MCP_API_KEY:-}
+      - SIVAN_AUTH_SALT=${SIVAN_AUTH_SALT:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/stats')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  sivan_data:

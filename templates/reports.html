@@ -18,14 +18,7 @@
         margin-bottom: 15px;
         border-radius: 0 5px 5px 0;
     }
-    .subscription-card {
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-        color: white;
-        border-radius: 10px;
-        padding: 20px;
-        margin-bottom: 20px;
-    }
-    .timeline {
+.timeline {
         position: relative;
         padding-left: 30px;
     }
@@ -101,28 +94,8 @@ body.dark-mode .report-header { border-bottom-color: var(--border); }</style>
             </div>
         </div>
 
-        <!-- 报告订阅 -->
-        <div class="subscription-card">
-            <h6><i class="bi bi-bell"></i> 报告订阅</h6>
-            <p class="small">自动接收定期报告到邮箱</p>
-            <div class="mt-3">
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="subscribeWeekly" checked>
-                    <label class="form-check-label" for="subscribeWeekly">每周报告</label>
-                </div>
-                <div class="form-check mt-2">
-                    <input class="form-check-input" type="checkbox" id="subscribeMonthly">
-                    <label class="form-check-label" for="subscribeMonthly">每月报告</label>
-                </div>
-            </div>
-            <div class="input-group mt-3">
-                <input type="email" class="form-control" placeholder="邮箱地址" id="subscribeEmail">
-                <button class="btn btn-light" onclick="subscribeReport()"><i class="bi bi-check"></i></button>
-            </div>
-        </div>
-
         <!-- 报告统计 -->
-        <div class="card mt-4">
+        <div class="card">
             <div class="card-header">
                 <h6 class="mb-0"><i class="bi bi-bar-chart"></i> 报告统计</h6>
             </div>
@@ -661,57 +634,15 @@ function deleteReport(reportId) {
         .catch(function(error) { alert('删除失败: ' + error.message); });
 }
 
-function subscribeReport() {
-    var email = document.getElementById('subscribeEmail').value.trim();
-    var weekly = document.getElementById('subscribeWeekly').checked;
-    var monthly = document.getElementById('subscribeMonthly').checked;
-    if (!email) { alert('请输入邮箱地址'); return; }
-    if (!weekly && !monthly) { alert('请至少选择一种报告类型'); return; }
-
-    var btn = document.querySelector('.subscription-card .btn-light');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-    var promises = [];
-
-    if (weekly) {
-        promises.push(
-            fetch('/api/report-subscriptions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: email, report_type: 'weekly', delivery_method: 'email' })
-            }).then(function(r) { return r.json(); })
-        );
-    }
-    if (monthly) {
-        promises.push(
-            fetch('/api/report-subscriptions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: email, report_type: 'monthly', delivery_method: 'email' })
-            }).then(function(r) { return r.json(); })
-        );
-    }
-
-    Promise.all(promises)
-        .then(function(results) {
-            var allOk = results.every(function(r) { return r.success; });
-            if (allOk) {
-                var types = [];
-                if (weekly) types.push('周报');
-                if (monthly) types.push('月报');
-                alert('订阅成功！' + email + ' 将定期接收' + types.join('和'));
-                document.getElementById('subscribeEmail').value = '';
-            } else {
-                var errors = results.filter(function(r) { return !r.success; }).map(function(r) { return r.error; }).join('; ');
-                alert('订阅失败: ' + errors);
-            }
-        })
-        .catch(function(err) { alert('订阅失败: ' + err.message); })
-        .then(function() {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-check"></i>';
-        });
-}
+	window.filterReports = filterReports;
+	window.viewReportDetail = viewReportDetail;
+	window.downloadReport = downloadReport;
+	window.publishReport = publishReport;
+	window.shareReport = shareReport;
+	window.deleteReport = deleteReport;
+	window.showCustomReportModal = showCustomReportModal;
+	window.generateCustomReport = generateCustomReport;
+	window.generateWeeklyReport = generateWeeklyReport;
 
 function updateStats() {
     var total = currentReports.length;
@@ -726,15 +657,5 @@ function updateStats() {
     document.getElementById('thisWeekReports').textContent = thisWeek;
 }
 
-window.filterReports = filterReports;
-window.viewReportDetail = viewReportDetail;
-window.downloadReport = downloadReport;
-window.publishReport = publishReport;
-window.shareReport = shareReport;
-window.deleteReport = deleteReport;
-window.subscribeReport = subscribeReport;
-window.showCustomReportModal = showCustomReportModal;
-window.generateCustomReport = generateCustomReport;
-window.generateWeeklyReport = generateWeeklyReport;
 </script>
 {% endblock %}

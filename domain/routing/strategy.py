@@ -360,6 +360,7 @@ class ContextAwareRouter(IRoutingStrategy):
         - quality / security 默认 medium
         - collaboration 默认 False
         """
+        complexity = context.get("complexity", 3)
         domain = context.get("domain", "") if isinstance(context.get("domain"), str) else ""
         user_expertise = context.get("user_expertise", "intermediate")
         time_constraint = context.get("time_constraint", "medium")

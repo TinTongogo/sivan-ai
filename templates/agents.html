@@ -107,48 +107,6 @@
     </div>
 </div>
 
-<!-- 智能体统计 -->
-<div class="row">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-pie-chart me-2"></i>
-                智能体类型分布
-            </div>
-            <div class="card-body">
-                <div class="chart-container">
-                    <canvas id="agentTypeChart"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-info-circle me-2"></i>
-                智能体系统信息
-            </div>
-            <div class="card-body">
-                <ul class="list-group list-group-flush">
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        核心智能体数量
-                        <span class="badge bg-primary rounded-pill" id="core-count">-</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        领域智能体数量
-                        <span class="badge bg-secondary rounded-pill" id="domain-count">-</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        智能体总数
-                        <span class="badge bg-info rounded-pill" id="total-count">-</span>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Agent-Skill 使用矩阵 -->
 <div class="row mt-2">
     <div class="col-lg-12">
@@ -351,62 +309,10 @@
     // 初始化
     document.addEventListener('DOMContentLoaded', function() {
         cleanupModalBackdrop();
-        loadSystemInfo();
         loadSkills();
         loadAgentSkillMatrix();
         initAgentPagination();
     });
-
-    // ===== 动态加载系统信息 =====
-    function loadSystemInfo() {
-        fetch('/api/stats')
-            .then(r => r.json())
-            .then(stats => {
-                const agents = stats.agents || {};
-                const byType = agents.by_type || {};
-                const total = agents.total || 0;
-                const core = byType.core || byType['core'] || 0;
-                const domain = byType.domain || byType['domain'] || 0;
-
-                document.getElementById('core-count').textContent = core;
-                document.getElementById('domain-count').textContent = domain;
-                document.getElementById('total-count').textContent = total;
-
-                // 更新图表
-                const ctx = document.getElementById('agentTypeChart').getContext('2d');
-                new Chart(ctx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ['核心智能体', '领域智能体'],
-                        datasets: [{
-                            data: [core, domain],
-                            backgroundColor: ['rgba(67, 97, 238, 0.8)', 'rgba(108, 117, 125, 0.8)'],
-                            borderColor: ['rgba(67, 97, 238, 1)', 'rgba(108, 117, 125, 1)'],
-                            borderWidth: 1
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { position: 'bottom' },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        const label = context.label || '';
-                                        const value = context.raw || 0;
-                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                        const pct = total > 0 ? Math.round((value / total) * 100) : 0;
-                                        return `${label}: ${value} (${pct}%)`;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-            })
-            .catch(err => console.error('加载系统信息失败:', err));
-    }
 
     // ===== 刷新 =====
     function refreshAgents() {

@@ -23,7 +23,7 @@
    - **ML路由器**: 基于scikit-learn的文本分类和意图识别
    - **上下文感知路由器**: 多维度上下文分析（任务复杂度、领域、用户专业水平等）
    - **自适应路由器**: 动态权重调整，基于历史表现优化路由策略
-   - **集成路由器**: 统一管理所有路由策略，支持策略切换和综合分析
+   - **路由领域服务** (`RoutingService`): 统一管理所有路由策略，支持策略切换和综合分析
    - **SQLite数据库**: 持久化存储路由决策、候选得分、用户反馈和性能指标
 
 4. **契约协作机制**: 基于SQLite数据库的智能体间协作系统
@@ -39,7 +39,6 @@
    - **成本计算**: 支持多种模型定价（Claude、GPT系列等）
    - **预算管理**: 每日预算设置、使用监控、超限警报
    - **统计分析**: 按智能体、模型、时间维度统计分析
-   - **MCP工具**: token_dashboard、token_daily_report、record_token_usage
 
 6. **AgentResolver 动态编排引擎**: 智能体名称解析与自动创建
    - **3阶段语义匹配**: 精确匹配 → 归一化匹配 → IDF加权描述匹配（BFS传递缩写展开）
@@ -70,8 +69,8 @@
    - ✅ 上下文感知路由器（8维度上下文分析 + 智能体画像）
    - ✅ 自适应路由器（动态权重调整 + 反馈学习）
    - ✅ SQLite数据库存储（6个表，完整分析功能）
-   - ✅ 集成路由器（统一管理所有策略 + 策略切换）
-   - ✅ MCP服务器集成（10个工具，完整路由分析）
+   - ✅ 集成路由（`RoutingService` 统一管理所有策略 + 策略切换）
+   - ✅ MCP服务器集成（14个工具，完整路由分析）
 4. **第四阶段**: 轻量监控 + 管理控制台基础功能 ✅ 已完成
    - ✅ 智能体间契约协作系统（SQLite数据库存储）
    - ✅ Token统计看板（成本监控和预算管理）
@@ -105,37 +104,37 @@ uv run python server.py
 📊 智能体数量: 18
 📊 数据库文件: /path/to/data/sivan.db
 📊 ML模型目录: /path/to/data/models/
-🔧 可用MCP工具: 10
+🔧 可用MCP工具: 14
 📁 契约数据库: contracts 表
-🚀 路由系统: 集成路由器（自适应权重）
+🚀 路由系统: `RoutingService` + AdaptiveRouter（自适应权重）
 ```
 
 ### 3. 基本使用
 ```bash
-# 测试路由系统（DDD 架构）
+# 测试路由系统（使用领域服务直接构造）
 uv run python -c "
-from infrastructure.persistence.connection import SQLiteConnectionManager
-from infrastructure.persistence.agent_repo import AgentRepository
-from infrastructure.persistence.routing_repo import RoutingRepository
 from domain.routing.service import RoutingService as DomainRoutingService
-from application.services.routing_service import RoutingService
+from domain.routing.strategy import SemanticRouter, ContextAwareRouter, AdaptiveRouter
 
-conn_mgr = SQLiteConnectionManager('data/sivan.db')
-agent_repo = AgentRepository(conn_mgr)
-routing_repo = RoutingRepository(conn_mgr)
-domain_svc = DomainRoutingService()
-routing_svc = RoutingService(domain_svc, routing_repo)
+svc = DomainRoutingService(strategies={}, default_strategy='adaptive')
+semantic = SemanticRouter()
+context = ContextAwareRouter()
+svc.register_strategy('semantic', semantic)
+svc.register_strategy('context_aware', context)
+adaptive = AdaptiveRouter(strategies={'semantic': semantic, 'context_aware': context})
+svc.register_strategy('adaptive', adaptive)
+svc.switch_strategy('adaptive')
 
-for name, agent in agent_repo.find_all_active().items():
-    routing_svc.add_agent(name, agent.get_capabilities())
+svc.add_agent('be-dev', ['后端开发', 'API设计', '数据库'])
+svc.add_agent('fe-dev', ['前端开发', 'UI组件', '响应式设计'])
 
-# 测试路由
-result = routing_svc.route('设计用户登录API', {})
+result = svc.route('设计用户登录API', {'domain': 'backend'})
 print(f'路由结果: {result}')
 
-# 获取分析
-analytics = routing_svc.get_analytics()
-print(f'数据库决策数: {analytics.get(\"database\", {}).get(\"total_decisions\", 0)}')
+# 获取所有策略的分析
+analysis = svc.analyze_task('设计用户登录API', {'domain': 'backend'})
+print(f'共识智能体: {analysis[\"consensus\"][\"agent\"]}')
+print(f'共识度: {analysis[\"consensus\"][\"agreement\"]:.0%}')
 "
 ```
 
@@ -149,7 +148,7 @@ uv run python -m pytest tests/ -v
 
 ### MCP 服务器开发
 系统使用 FastMCP 进行 Model Context Protocol 集成。关键文件：
-- `server.py`: 基于SLOID架构的MCP服务器，使用产品级路由系统
+- `server.py`: 统一入口，支持 MCP 服务器（STDIO/HTTP）和管理控制台两种模式
 - 智能体作为 MCP 工具暴露给 Claude Desktop 集成
 - 路由决策存储在SQLite数据库中，支持完整的分析和反馈学习
 
@@ -162,41 +161,26 @@ uv run python server.py
 # - 智能体数量: 18
 # - 数据库文件路径: data/sivan.db
 # - ML模型目录: data/models/
-# - 可用MCP工具: 10个
-# - 路由系统状态: 集成路由器（自适应权重）
+# - 可用MCP工具: 14个
+# - 路由系统状态: RoutingService + AdaptiveRouter（自适应权重）
 # - 路由策略: 语义、ML、上下文感知、自适应（4种策略）
 ```
 
 ### 测试套件
-测试文件按类型组织在 `tests/` 目录：
+测试文件按类型组织在 `tests/` 目录（当前包含 41+ 个单元测试）：
 
 ```bash
 # 运行所有测试
 uv run python -m pytest tests/ -v
 
-# 运行特定类型测试
-uv run python -m pytest tests/unit/ -v           # 单元测试
-uv run python -m pytest tests/functional/ -v     # 功能测试
-uv run python -m pytest tests/integration/ -v    # 集成测试
-uv run python -m pytest tests/performance/ -v    # 性能测试
-uv run python -m pytest tests/e2e/ -v            # 端到端测试
+# 运行单元测试
+uv run python -m pytest tests/unit/ -v
 
 # 运行单个测试文件
-uv run python tests/unit/test_solid.py           # SLOID架构测试
-uv run python tests/unit/test_sqlite_routing.py  # SQLite路由系统测试
-uv run python tests/functional/test_server.py    # 服务器功能测试
-uv run python tests/integration/test_mcp_integration.py  # MCP集成测试
-uv run python tests/performance/test_performance.py      # 性能测试
-uv run python tests/e2e/test_mcp.py              # 端到端测试
+uv run python -m pytest tests/unit/test_routing.py  -v   # 路由策略测试
+uv run python -m pytest tests/unit/test_entity.py   -v   # 领域实体测试
+uv run python -m pytest tests/unit/test_settings.py -v   # 配置测试
 ```
-
-### 文档结构
-文档按模块组织在 `docs/` 目录：
-- `docs/architecture/` - 架构设计文档
-- `docs/api/` - API接口文档
-- `docs/usage/` - 使用指南文档
-- `docs/development/` - 开发文档
-- `docs/deployment/` - 部署文档
 
 ### 智能体开发工作流
 1. **创建/修改智能体**: 按照模板结构编辑 `agents/{name}.md`
@@ -261,7 +245,7 @@ sivan/
 │   │   ├── routes/          14 个路由模块
 │   │   └── services/        17 个服务模块
 │   └── mcp/                 FastMCP 服务器（14 个工具）
-├── templates/               16 个 Jinja2 模板
+├── templates/               15 个 Jinja2 模板
 │   ├── base.html           基础模板（侧边栏导航）
 │   ├── dashboard.html      仪表板
 │   ├── chat.html           对话
@@ -286,15 +270,15 @@ sivan/
 │   ├── seed_example_squads.py
 │   ├── import_agents.py
 │   └── import_skills.py
-├── server.py                FastMCP 服务器入口
-├── admin_console.py         FastAPI 管理控制台入口
+├── server.py                统一入口（MCP 服务器 / 管理控制台）
 ├── pyproject.toml           Python 依赖
-├── tests/                   测试套件
-│   ├── unit/
-│   ├── functional/
-│   ├── integration/
-│   ├── performance/
-│   └── e2e/
+├── tests/                   测试套件（单元测试 41+）
+│   ├── conftest.py          共享 fixtures
+│   ├── unit/                单元测试
+│   ├── functional/          🔜 规划中
+│   ├── integration/         🔜 规划中
+│   ├── performance/         🔜 规划中
+│   └── e2e/                 🔜 规划中
 └── data/
     ├── sivan.db             SQLite 统一数据库
     ├── chroma/              ChromaDB 持久化
@@ -325,44 +309,30 @@ sivan/
 - **权重调整**: 自适应路由器根据历史表现自动调整策略权重
 - **反馈学习**: 通过 `provide_routing_feedback` MCP工具提供反馈，优化路由
 - **数据库查询**: 使用 `routing_analytics` MCP工具查看路由分析数据
-- **策略切换**: 通过 `IntegratedRouter.switch_router()` 方法动态切换路由策略
+- **策略切换**: 通过 `RoutingService.switch_strategy()` 方法动态切换路由策略
 
 ## 测试和验证
 
 ### 测试分类
 测试按类型组织在 `tests/` 目录：
 
-1. **单元测试** (`tests/unit/`): 测试SLOID原则和设计模式
-   - SLOID五大原则验证
-   - 设计模式实现验证
-   - 核心组件功能验证
-   - **新增**: SQLite路由系统测试 (`test_sqlite_routing.py`)
+1. **单元测试** (`tests/unit/`): 测试核心领域层组件
+   - 路由策略测试（4 种策略全覆盖）
+   - 领域实体序列化/反序列化
+   - 配置模块测试
+   - 回归测试（P0 缺陷验证）
 
-2. **功能测试** (`tests/functional/`): 测试MCP服务器功能
-   - 系统初始化测试
-   - 智能体列表测试
-   - 任务路由测试（使用产品级路由系统）
-   - 契约管理测试
-   - 路由分析功能测试
+2. **功能测试** (`tests/functional/`) *🔜 规划中*
+   - MCP 工具调用功能验证
 
-3. **集成测试** (`tests/integration/`): 测试MCP服务器集成
-   - Claude Desktop模拟集成
-   - MCP工具调用测试
+3. **集成测试** (`tests/integration/`) *🔜 规划中*
+   - 数据库 + 路由系统集成
+
+4. **性能测试** (`tests/performance/`) *🔜 规划中*
+   - 路由决策性能基准
+
+5. **端到端测试** (`tests/e2e/`) *🔜 规划中*
    - 完整工作流程测试
-   - 数据库持久化验证
-
-4. **性能测试** (`tests/performance/`): 系统性能基准测试
-   - 系统初始化性能
-   - 路由性能测试（多策略对比）
-   - 数据库查询性能
-   - 并发性能测试
-   - 内存使用测试
-
-5. **端到端测试** (`tests/e2e/`): 完整工作流程测试
-   - 完整MCP服务器流程
-   - 智能体执行流程
-   - 契约协作流程
-   - 路由反馈学习流程
 
 ### 测试运行
 ```bash
@@ -371,13 +341,11 @@ uv run python -m pytest tests/ -v
 
 # 运行特定类型测试
 uv run python -m pytest tests/unit/ -v
-uv run python -m pytest tests/functional/ -v
-uv run python -m pytest tests/integration/ -v
-uv run python -m pytest tests/performance/ -v
-uv run python -m pytest tests/e2e/ -v
 
 # 运行单个测试文件
-uv run python tests/unit/test_solid.py
+uv run python -m pytest tests/unit/test_routing.py -v
+uv run python -m pytest tests/unit/test_entity.py -v
+uv run python -m pytest tests/unit/test_settings.py -v
 ```
 
 ### 智能体验证
@@ -421,12 +389,13 @@ uv run python server.py
 
 ### 管理控制台使用
 ```bash
-# 1. 启动管理控制台
-uv run python admin_console.py
-# 或使用启动脚本
-uv run python start_admin_console.py
+# 启动管理控制台（Web 界面 + MCP HTTP）
+uv run python server.py
 
-# 2. 访问Web界面
+# 或以 STDIO 模式启动 MCP 服务器（用于 Claude Desktop）
+uv run python server.py --mcp-stdio
+
+# 访问Web界面
 # 打开浏览器访问: http://127.0.0.1:8001
 
 # 3. 主要功能页面
@@ -480,32 +449,32 @@ keyword_features (keyword, agent_name, occurrence_count, success_rate, last_used
 
 ### 2. 路由策略实现
 
-#### 语义路由器 (`semantic_router.py`)
+#### 语义路由器 (`domain/routing/strategy.py` → `SemanticRouter`)
 - **中文分词**: 使用jieba进行中文文本分词
 - **同义词扩展**: 内置同义词库，扩展匹配范围
 - **特征权重**: 基于历史成功率动态调整关键词权重
 - **意图分析**: 识别任务的技术、业务、UI等不同领域
 
-#### ML路由器 (`ml_router.py`)
+#### ML路由器 (`domain/routing/strategy.py` → `MLRouter`)
 - **特征提取**: TF-IDF向量化，支持unigram和bigram
 - **集成分类器**: 组合Naive Bayes、Logistic Regression、Random Forest
 - **模型持久化**: 训练好的模型保存到文件，支持增量训练
 - **自动重新训练**: 当新数据增长50%或超过7天时自动重新训练
 
-#### 上下文感知路由器 (`context_router.py`)
+#### 上下文感知路由器 (`domain/routing/strategy.py` → `ContextAwareRouter`)
 - **8个上下文维度**: 任务复杂度、领域、用户专业水平、时间约束、协作需求、质量要求、安全要求、会话上下文
 - **智能体画像**: 为每个智能体建立上下文偏好和成功率画像
 - **实时学习**: 从每次路由决策中更新上下文知识
 
-#### 自适应路由器 (`adaptive_router.py`)
+#### 自适应路由器 (`domain/routing/strategy.py` → `AdaptiveRouter`)
 - **动态权重**: 基于成功率(60%)、置信度(20%)、执行时间(10%)、反馈正确率(10%)计算权重
 - **衰减因子**: 鼓励使用新策略，防止老策略垄断
 - **后备策略**: 当所有策略失败时，使用最可靠策略或最常用智能体
 
-#### 集成路由器 (`integrated_router.py`)
-- **统一管理**: 管理所有路由策略，提供统一接口
-- **策略切换**: 支持动态切换当前使用的路由策略
-- **综合分析**: 获取所有策略的分析结果和共识智能体
+#### 集成路由 (`domain/routing/service.py` → `RoutingService`)
+- **统一管理**: 通过 `DomainRoutingService` 管理所有路由策略，提供统一接口
+- **策略切换**: 通过 `switch_strategy()` 动态切换当前使用的路由策略
+- **综合分析**: `analyze_task()` 获取所有策略的分析结果和共识智能体
 
 ### 3. 学习机制
 - **反馈学习**: 用户可以通过MCP工具提供路由反馈
@@ -536,7 +505,7 @@ keyword_features (keyword, agent_name, occurrence_count, success_rate, last_used
 - **架构模式**: SLOID原则 + 设计模式
 
 ### 扩展性
-- **新路由策略**: 实现 `IRouter` 接口即可添加新策略
+- **新路由策略**: 实现 `IRoutingStrategy` 接口即可添加新策略
 - **数据库扩展**: SQLite表结构设计支持扩展新功能
 - **智能体扩展**: 通过工厂模式添加新智能体类型
 - **技能扩展**: 模块化技能设计，支持动态添加
