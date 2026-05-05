@@ -196,20 +196,20 @@ def init_database():
         stuck = recover_stuck_messages(db_path)
         if stuck:
             print(f"✅ 已恢复 {stuck} 条卡住的消息")
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ 消息恢复失败: {e}")
 
     # 技能归档检查
     try:
         check_skill_archiving(db_path)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ 技能归档检查失败: {e}")
 
     # 周报自动生成检查
     try:
         check_and_generate_weekly_report(db_path)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ 周报自动生成检查失败: {e}")
 
     # 默认配置 seed
     try:

@@ -41,7 +41,7 @@ class Settings:
     MCP_API_KEY: str = os.getenv("MCP_API_KEY", "")  # MCP 服务器
     AUTH_COOKIE_NAME: str = "sivan_token"
     AUTH_COOKIE_MAX_AGE: int = 86400  # 24小时
-    AUTH_SALT: str = "@sivan"
+    AUTH_SALT: str = os.getenv("SIVAN_AUTH_SALT", "@sivan")
 
     # SMTP 邮件配置
     SMTP_HOST: str = os.getenv("SIVAN_SMTP_HOST", "")

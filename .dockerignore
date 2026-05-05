@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv
+data/
+*.sqlite
+*.sqlite3
+*.log
+.output
+.ruff_cache
+.pytest_cache

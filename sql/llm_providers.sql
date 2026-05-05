@@ -17,4 +17,3 @@ create table llm_providers
 );
 
 INSERT INTO llm_providers (id, name, auth_type, api_url, api_key, model, api_version, max_tokens, temperature, timeout, is_active, created_at, updated_at) VALUES ('d14010f4', 'Ollama', 'OpenAI', 'http://localhost:11434/v1', '', 'qwen3:4b', '', 40960, 0.7, 120, 0, '2026-04-25 12:56:26', '2026-05-01 05:56:18');
-INSERT INTO llm_providers (id, name, auth_type, api_url, api_key, model, api_version, max_tokens, temperature, timeout, is_active, created_at, updated_at) VALUES ('af78ea12', 'DeepSeek', 'OpenAI', 'https://api.deepseek.com', 'sk-708926557b9444bcaa8927da962abf43', 'deepseek-v4-flash', '', 350000, 0.7, 120, 1, '2026-04-26 03:38:54', '2026-05-02 10:49:52');

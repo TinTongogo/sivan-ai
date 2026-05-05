@@ -130,22 +130,6 @@
 
     <div class="col-lg-4">
         <div class="card">
-            <div class="card-header"><h6><i class="bi bi-pie-chart me-2"></i>技能分类分布</h6></div>
-            <div class="card-body">
-                {% if skills_stats.by_category %}
-                    <div class="chart-pie"><canvas id="skillsCategoryChart"></canvas></div>
-                    <div class="mt-3 text-center small">
-                        {% for category, count in skills_stats.by_category.items() %}
-                        <span class="me-2"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{{ loop.index0|get_chart_color }};margin-right:4px;"></span>{{ category }} ({{ count }})</span>
-                        {% endfor %}
-                    </div>
-                {% else %}
-                    <div class="text-center py-4 text-muted"><i class="bi bi-pie-chart fa-2x mb-2 d-block"></i>暂无分类数据</div>
-                {% endif %}
-            </div>
-        </div>
-
-        <div class="card mt-4">
             <div class="card-header"><h6><i class="bi bi-star me-2"></i>最常用技能</h6></div>
             <div class="card-body p-0">
                 {% if skills_stats.top_skills %}
@@ -348,16 +332,6 @@ function initSkillPagination() {
 
 document.addEventListener('DOMContentLoaded', function() {
     loadSkillTrendData('7d');
-    {% if skills_stats.by_category %}
-    new Chart(document.getElementById('skillsCategoryChart'), {
-        type: 'doughnut',
-        data: {
-            labels: [{% for category in skills_stats.by_category %}'{{ category }}',{% endfor %}],
-            datasets: [{data:[{% for count in skills_stats.by_category.values() %}{{ count }},{% endfor %}], backgroundColor:[{% for i in range(skills_stats.by_category|length) %}'{{ i|get_chart_color }}',{% endfor %}], hoverBorderColor:'rgba(234,236,244,1)'}]
-        },
-        options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '70%' }
-    });
-    {% endif %}
     initSkillPagination();
 });
 </script>

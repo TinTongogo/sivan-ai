@@ -16,8 +16,6 @@ class RoutingStrategy(str, Enum):
     ML = "ml"
     CONTEXT_AWARE = "context_aware"
     ADAPTIVE = "adaptive"
-    EXPLICIT = "explicit"
-    FALLBACK = "fallback"
 
 
 class RoutingStatus(str, Enum):

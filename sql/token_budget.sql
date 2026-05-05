@@ -8,4 +8,3 @@ create table token_budget
     updated_at     TIMESTAMP default CURRENT_TIMESTAMP
 );
 
-INSERT INTO token_budget (id, daily_budget, monthly_budget, alert_email, updated_at) VALUES (1, 10, 300, 'tinton@msn.cn', '2026-04-30 19:05:32');
