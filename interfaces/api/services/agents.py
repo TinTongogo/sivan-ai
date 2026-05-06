@@ -14,9 +14,9 @@ def get_agents_count(db_path: str | Path) -> dict[str, Any]:
     try:
         conn = _connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as count FROM agents")
+        cursor.execute("SELECT COUNT(*) as count FROM agents WHERE agent_type != 'system'")
         total = cursor.fetchone()["count"]
-        cursor.execute("SELECT category, COUNT(*) as count FROM agents GROUP BY category")
+        cursor.execute("SELECT category, COUNT(*) as count FROM agents WHERE agent_type != 'system' GROUP BY category")
         by_type = {r["category"]: r["count"] for r in cursor.fetchall()}
         conn.close()
         return {"total": total, "by_type": by_type}

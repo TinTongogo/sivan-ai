@@ -1,8 +1,8 @@
-"""Orchestrator 智能体 — ReAct 三阶段决策循环。
+"""Orchestrator 智能体 — 会话必经入口。
 
-负责任务分析 → 规划生成 → 执行委托 的完整决策流程。
-当路由系统未匹配到特定智能体时，Orchestrator 分析任务特征
-并决定：直接回复（chat）/ 单智能体执行（single）/ 动态编排（squad）。
+所有用户消息均通过 Orchestrator 调度：
+- @agent 时直接委托对应智能体
+- 无指定时分析任务并决策 chat/single/squad
 """
 
 from __future__ import annotations
@@ -43,10 +43,10 @@ _META_SYSTEM_PROMPT = (
 
 
 class OrchestratorAgent(GenericAgent):
-    """Orchestrator 智能体 — ReAct 三阶段决策循环。
+    """Orchestrator 智能体 — 所有会话的必经入口调度器。
 
-    当路由系统返回 orchestrator 时，
-    进行任务分析并输出结构化决策，供 execute_message_flow 执行。
+    当 target_agent 设置时直接委托对应智能体；
+    否则用 LLM 分析任务并输出结构化决策。
     """
 
     def __init__(self, config: AgentConfig, db_conn, skill_loader=None, **kwargs) -> None:
@@ -67,13 +67,22 @@ class OrchestratorAgent(GenericAgent):
         )
 
     def _execute_core(self, task_description: str, context: dict[str, Any]) -> Any:
-        """ReAct 三阶段决策循环。
+        """Orchestrator 唯一决策入口。
 
-        返回 JSON 字符串，包含决策结果：
-        - chat:  {"decision": "chat", "response": "..."}
-        - single: {"decision": "single", "agent": "...", "refined_task": "...", "reasoning": "..."}
-        - squad:  {"decision": "squad", "topology": {...}, "reasoning": "..."}
+        target_agent 设置时直接委托，不做 LLM 分析；
+        否则执行 ReAct 三阶段决策循环输出 JSON 决策。
         """
+        # 直接委托路径：用户 @agent 时跳过分析，直接返回 single 决策
+        target_agent = context.get("target_agent") if isinstance(context, dict) else None
+        if target_agent:
+            return json.dumps({
+                "decision": "single",
+                "agent": target_agent,
+                "refined_task": task_description,
+                "reasoning": "direct",
+            }, ensure_ascii=False)
+
+        # 标准分析路径
         analysis = self._phase_analysis(task_description, context)
         if not analysis:
             return json.dumps({
@@ -130,6 +139,27 @@ class OrchestratorAgent(GenericAgent):
     def _phase_analysis(self, task_description: str, context: dict[str, Any]) -> dict[str, Any] | None:
         """Phase 1: 用 LLM 分析任务并输出结构化决策。"""
         messages = [{"role": "system", "content": _META_SYSTEM_PROMPT}]
+
+        # 注入路由策略推荐信号（各策略对当前任务的独立判断）
+        routing_signals = context.pop("_routing_signals", None) if isinstance(context, dict) else None
+        last_agent = context.pop("_last_agent", None) if isinstance(context, dict) else None
+        if routing_signals or last_agent:
+            signal_parts = ["\n\n[路由策略推荐（供参考，不强制采纳）]"]
+            if last_agent:
+                signal_parts.append(f"- 上一轮会话智能体: {last_agent}")
+            strategies = routing_signals.get("strategies", {}) if routing_signals else {}
+            for strategy_name, result in strategies.items():
+                agent = result.get("selected_agent")
+                if agent:
+                    signal_parts.append(f"- {strategy_name} 推荐: {agent}")
+            adaptive = routing_signals.get("adaptive") if routing_signals else None
+            consensus = routing_signals.get("consensus") if routing_signals else None
+            if adaptive:
+                signal_parts.append(f"- 自适应路由推荐: {adaptive}")
+            if consensus:
+                signal_parts.append(f"- 多策略一致推荐: {consensus}")
+            if len(signal_parts) > 1:
+                messages.append({"role": "system", "content": "\n".join(signal_parts)})
 
         history = context.pop("_history", []) if isinstance(context, dict) else []
         if history:

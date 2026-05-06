@@ -424,12 +424,19 @@ class ContextAwareRouter(IRoutingStrategy):
 
         best_agent: str | None = None
         best_score = -1.0
+        min_score = float("inf")
 
         for agent_name in self._agents:
             s = self._score_agent(agent_name, ctx)
+            if s < min_score:
+                min_score = s
             if s > best_score:
                 best_score = s
                 best_agent = agent_name
+
+        # 所有智能体得分相同时，上下文无区分信号，不应路由
+        if best_score <= min_score:
+            return None
 
         return best_agent
 

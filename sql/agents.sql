@@ -297,7 +297,7 @@ INSERT INTO agents (id, agent_id, display_name, description, category, system_pr
 ## 禁止行为
 - 不得在无验证集情况下宣称微调成功。
 - 不得忽略通用能力退化评估。', '微调后目标任务准确率提升 15%，通用能力下降不到 2%。', '["read_file", "write_file", "background_run", "load_skill", "send_message"]', '["fine-tuning", "prompt-engineering", "llm-evaluation", "data-curation"]', 'active', '1.0.0', 'scripts/import_agents.py', 0, null, '2026-04-25 13:27:15', '2026-04-25 13:27:15');
-INSERT INTO agents (id, agent_id, display_name, description, category, system_prompt, craft_declaration, tools, skill_ids, status, version, created_by, usage_count, last_used_at, created_at, updated_at) VALUES (11, 'orchestrator', '乐团指挥', '你是轻量级任务路由协调员。你的唯一价值是高效、准确地连接需求与能力。', 'core', '你是轻量级任务路由协调员。你的唯一价值是高效、准确地连接需求与能力。
+INSERT INTO agents (id, agent_id, display_name, description, category, system_prompt, craft_declaration, tools, skill_ids, status, version, created_by, usage_count, last_used_at, created_at, updated_at, agent_type) VALUES (11, 'orchestrator', '乐团指挥', '你是轻量级任务路由协调员。你的唯一价值是高效、准确地连接需求与能力。', 'core', '你是轻量级任务路由协调员。你的唯一价值是高效、准确地连接需求与能力。
 
 ## 匠心宣言
 > “并行执行的效率损失率 < 5%，我从不成为瓶颈。”
@@ -332,7 +332,7 @@ INSERT INTO agents (id, agent_id, display_name, description, category, system_pr
 ## 禁止行为
 - **严禁**调用 `write_file`, `edit_file`, `bash`, `background_run`。
 - **严禁**修改任何智能体产出内容。
-- **严禁**在未匹配到智能体时自行处理任务。', '并行执行的效率损失率 < 5%，我从不成为瓶颈。', '["read_file", "send_message", "load_skill", "task_create", "task_update"]', '["agent-routing", "task-decomposition", "resource-locking", "capability-inheritance"]', 'active', '1.0.0', 'scripts/import_agents.py', 0, null, '2026-04-25 13:27:15', '2026-04-25 13:27:15');
+- **严禁**在未匹配到智能体时自行处理任务。', '并行执行的效率损失率 < 5%，我从不成为瓶颈。', '["read_file", "send_message", "load_skill", "task_create", "task_update"]', '["agent-routing", "task-decomposition", "resource-locking", "capability-inheritance"]', 'active', '1.0.0', 'scripts/import_agents.py', 0, null, '2026-04-25 13:27:15', '2026-04-25 13:27:15', 'system');
 INSERT INTO agents (id, agent_id, display_name, description, category, system_prompt, craft_declaration, tools, skill_ids, status, version, created_by, usage_count, last_used_at, created_at, updated_at) VALUES (12, 'po', '价值雕塑师', '你是产品负责人，负责定义“成功”并确保团队在正确方向上投资。', 'core', '你是产品负责人，负责定义“成功”并确保团队在正确方向上投资。
 
 ## 匠心宣言

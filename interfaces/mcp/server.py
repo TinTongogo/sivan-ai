@@ -234,7 +234,12 @@ async def call_agent(agent_name: str, task: str, context: str | None = None) -> 
 
 @app.tool()
 async def orchestrator_route(user_input: str, context: str | None = None) -> str:
-    """Orchestrator 路由：将用户输入路由到最合适的智能体。
+    """Orchestrator 路由：分析用户输入并路由到最合适的智能体。
+
+    所有消息必经 OrchestratorAgent 分析决策：
+    - chat → 直接回复
+    - single → 委托对应智能体执行
+    - squad → 多智能体编排
 
     Args:
         user_input: 用户输入的自然语言请求
@@ -249,37 +254,51 @@ async def orchestrator_route(user_input: str, context: str | None = None) -> str
         except json.JSONDecodeError as e:
             return f"上下文格式错误: {e}"
 
-    explicit_match = re.search(r'@(\w+):(.+)', user_input)
-    if explicit_match:
-        agent_name = explicit_match.group(1)
-        task_desc = explicit_match.group(2).strip()
-        agents = system._agent_repo.find_all_active()
-        if agent_name in agents:
-            return await call_agent(agent_name, task_desc, context)
-        return f"错误：智能体 '{agent_name}' 不存在"
+    # 调用 OrchestratorAgent 分析决策
+    result = system.agent_service.execute("orchestrator", user_input, task_context)
 
-    best_agent = system.routing_service.route(user_input, task_context)
-    agents = system._agent_repo.find_all_active()
+    try:
+        decision = json.loads(result)
+    except json.JSONDecodeError:
+        return f"## 分析失败\n\nOrchestrator 返回了非结构化结果:\n{result}"
 
-    if best_agent:
-        output = "## Orchestrator 路由结果\n\n"
-        output += f"**用户输入**: {user_input}\n\n"
-        output += f"**路由决策**: 匹配到智能体 `{best_agent}`\n\n"
-        output += "**执行结果**:\n\n"
-        agent_result = await call_agent(best_agent, user_input, context)
-        output += agent_result
-        return output
+    if decision.get("decision") == "chat":
+        return f"## 聊天回复\n\n{decision.get('response', '')}"
 
-    output = "## Orchestrator 路由结果\n\n"
-    output += f"**用户输入**: {user_input}\n\n"
-    output += "**路由决策**: 未找到匹配的智能体\n\n"
-    output += "**建议**:\n"
-    output += "1. 使用显式路由指定智能体，如: `@be-dev:设计用户认证API`\n"
-    output += "2. 或提供更明确的请求描述\n\n"
-    output += "**可用智能体**:\n"
-    for agent_name in agents.keys():
-        output += f"- `{agent_name}`\n"
-    return output
+    agent_name = decision.get("agent", "") if decision.get("decision") == "single" else ""
+
+    if decision.get("decision") == "single" and agent_name:
+        refined_task = decision.get("refined_task", user_input)
+
+        # AgentResolver 解析语义化 agent 名称
+        from application.services.agent_resolver import AgentResolver
+        resolver = AgentResolver(str(system.db_path))
+        resolved = resolver.resolve_agent(agent_name)
+        if resolved:
+            agent_name = resolved
+        elif resolver._should_create_agent(agent_name):
+            new_id = resolver.create_agent(agent_name, task_description=user_input)
+            system.agent_service.reload(new_id)
+            agent_name = new_id
+        else:
+            return f"未找到匹配的智能体: {agent_name}"
+
+        output = system.agent_service.execute(agent_name, refined_task, task_context)
+        result_text = "## Orchestrator 路由结果\n\n"
+        result_text += f"**用户输入**: {user_input}\n\n"
+        result_text += f"**路由决策**: 匹配到智能体 `{agent_name}`\n\n"
+        result_text += f"**执行结果**:\n\n{output}"
+        return result_text
+
+    if decision.get("decision") == "squad":
+        topology = decision.get("topology", {})
+        return "## Squad 编排\n\n需要多智能体协作:\n"
+        "```json\n"
+        f"{json.dumps(topology, ensure_ascii=False, indent=2)}\n"
+        "```\n\n"
+        "请通过 Web 控制台查看编排进度。"
+
+    return f"## 未知决策\n\nOrchestrator 返回了无法处理的决策:\n```json\n{json.dumps(decision, ensure_ascii=False, indent=2)}\n```"
 
 
 @app.tool()

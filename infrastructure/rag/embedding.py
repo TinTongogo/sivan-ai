@@ -33,7 +33,7 @@ class BGEChineseEmbedding(EmbeddingFunction):
             self._try_load()
 
     @classmethod
-    def download_model(cls, model_name: str | None = None) -> None:
+    def download_model(cls, model_name: str | None = None, sentence_transformers=None) -> None:
         """下载 BGE 模型。优先使用魔搭社区，失败后回退到 HuggingFace。同步阻塞，可能耗时。
 
         Raises:

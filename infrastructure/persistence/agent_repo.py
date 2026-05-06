@@ -18,21 +18,6 @@ from infrastructure.persistence.connection import SQLiteConnectionManager
 
 logger = logging.getLogger("sivan.agent_repo")
 
-# orchestrator 默认记录（seed data 未导入时的自愈用）
-_ORCHESTRATOR_SEED = {
-    "agent_id": "orchestrator",
-    "display_name": "乐团指挥",
-    "description": "系统内置编排调度智能体（OrchestratorAgent）",
-    "category": "core",
-    "system_prompt": "",
-    "craft_declaration": "",
-    "tools": '["read_file", "send_message", "load_skill", "task_create", "task_update"]',
-    "skill_ids": '["agent-routing", "task-decomposition", "resource-locking", "capability-inheritance"]',
-    "status": "active",
-    "version": "1.0.0",
-    "agent_type": "user",
-}
-
 
 class AgentRepository(IAgentRepository):
     """基于 SQLite + GenericAgent 的智能体仓库。"""
@@ -64,25 +49,6 @@ class AgentRepository(IAgentRepository):
             else:
                 agent = self._GenericAgent(config, self._db.connection, kb_service=self._kb_service)
             self._agents[agent_id] = agent
-        # orchestrator 是系统内置调度层，始终确保可用
-        if "orchestrator" not in self._agents:
-            logger.warning("orchestrator 不在 DB 中，写入默认记录")
-            seed = dict(_ORCHESTRATOR_SEED)
-            self._db.execute(
-                """INSERT INTO agents
-                   (agent_id, display_name, description, category, system_prompt,
-                    craft_declaration, tools, skill_ids, status, version, agent_type)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                tuple(seed.values()),
-            )
-            self._db.commit()
-            row = self._db.execute(
-                "SELECT * FROM agents WHERE agent_id = 'orchestrator'"
-            ).fetchone()
-            config = self._row_to_config(row)
-            self._agents["orchestrator"] = self._OrchestratorAgent(
-                config, self._db.connection
-            )
 
     def _row_to_config(self, row) -> Any:
         def _safe_json(val: str | None) -> list:
@@ -128,23 +94,7 @@ class AgentRepository(IAgentRepository):
             (agent_id,),
         ).fetchone()
         if not row:
-            # orchestrator DB 记录缺失时自愈写入
-            if agent_id == "orchestrator":
-                logger.warning("orchestrator 不在 DB 中，写入默认记录（reload 触发）")
-                seed = dict(_ORCHESTRATOR_SEED)
-                self._db.execute(
-                    """INSERT INTO agents
-                       (agent_id, display_name, description, category, system_prompt,
-                        craft_declaration, tools, skill_ids, status, version, agent_type)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    tuple(seed.values()),
-                )
-                self._db.commit()
-                row = self._db.execute(
-                    "SELECT * FROM agents WHERE agent_id = 'orchestrator'"
-                ).fetchone()
-            else:
-                return False
+            return False
         config = self._row_to_config(row)
         if agent_id == "orchestrator":
             self._agents[agent_id] = self._OrchestratorAgent(config, self._db.connection)
@@ -158,7 +108,10 @@ class AgentRepository(IAgentRepository):
     def execute(self, agent_id: str, task: str, context: dict | None = None) -> str:
         agent = self._agents.get(agent_id)
         if not agent:
-            return f"错误: 智能体 {agent_id} 不存在或未激活"
+            # 懒加载：不在缓存中时尝试从 DB 加载（重启后首次调用动态 agent）
+            if not self.reload(agent_id):
+                return f"错误: 智能体 {agent_id} 不存在或未激活"
+            agent = self._agents.get(agent_id)
 
         task_obj = Task(
             task_id=f"{agent_id}-{id(task)}",

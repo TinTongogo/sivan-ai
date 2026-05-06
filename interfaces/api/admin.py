@@ -266,10 +266,21 @@ def main():
         print("🔌 MCP HTTP: /mcp/mcp")
     print("\n按 Ctrl+C 停止服务器")
 
-    uvicorn.run(
+    import asyncio
+
+    config = uvicorn.Config(
         app,
         host=host,
         port=port,
         ws_ping_interval=30,
         ws_ping_timeout=10,
     )
+    server = uvicorn.Server(config)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(server.serve())
+    except KeyboardInterrupt:
+        loop.run_until_complete(server.shutdown())
+    finally:
+        loop.close()

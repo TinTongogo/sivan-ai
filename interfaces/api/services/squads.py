@@ -398,20 +398,12 @@ def _resolve_agent_repo(db_path: str | Path):
 
 
 def call_agent_for_squad(agent_name: str, task: str, context: dict) -> str:
-    """调用单个智能体（Squad 执行用）。
-
-    system 类型智能体（如 orchestrator）是系统内置调度层，
-    始终在内存中，不需要也不应该通过 DB reload。
+    """调用单个智能体。
     """
     from interfaces.mcp.server import get_system
     system = get_system()
     if system:
         try:
-            # orchestrator 始终在内存中，跳过 reload
-            if agent_name != "orchestrator":
-                loaded = system.agent_service.reload(agent_name)
-                if not loaded:
-                    logger.warning("call_agent_for_squad: agent '%s' 不在 DB 中，无法加载", agent_name)
             return system.agent_service.execute(agent_name, task, context)
         except Exception as e:
             return json.dumps({"agent": agent_name, "status": "error", "error": str(e)})
@@ -1331,7 +1323,7 @@ def execute_dynamic_squad(
     try:
         from application.services.agent_resolver import AgentResolver
         resolver = AgentResolver(db_path)
-        resolved = resolver.resolve_topology(topology)
+        resolved = resolver.resolve_topology(topology, task_context=task_description)
         phases = resolved.get("phases", [])
         topology = resolved
 

@@ -120,10 +120,16 @@ class AgentResolver:
 
     # ── 公开接口 ────────────────────────────────────────────────
 
-    def resolve_topology(self, topology: dict) -> dict:
-        """解析拓扑中所有 agent 名称。"""
+    def resolve_topology(self, topology: dict, task_context: str = "") -> dict:
+        """解析拓扑中所有 agent 名称。
+
+        Args:
+            topology: 编排拓扑结构
+            task_context: 用户原始任务描述，用于生成领域相关智能体配置
+        """
         for phase in topology.get("phases", []):
             resolved_agents = []
+            phase_task = phase.get("description", task_context)
             for agent_name in phase.get("agents", []):
                 rid = self.resolve_agent(agent_name)
                 if rid:
@@ -131,7 +137,7 @@ class AgentResolver:
                     logger.info("AgentResolver: '%s' → '%s'", agent_name, rid)
                 else:
                     if self._should_create_agent(agent_name):
-                        new_id = self.create_agent(agent_name)
+                        new_id = self.create_agent(agent_name, task_description=phase_task)
                         resolved_agents.append(new_id)
                         logger.info("AgentResolver: 创建智能体 '%s' ← '%s'", new_id, agent_name)
                     else:
@@ -226,13 +232,20 @@ class AgentResolver:
 
         return best_id if best_score >= AUTO_MATCH_THRESHOLD else None
 
-    def create_agent(self, agent_name: str) -> str:
-        """创建新智能体并热加载，返回 agent_id。"""
+    def create_agent(self, agent_name: str, task_description: str = "") -> str:
+        """创建新智能体并热加载，返回 agent_id。
+
+        Args:
+            agent_name: 智能体角色名称（如 "database-architect"）
+            task_description: 当前用户任务描述，用于生成领域相关的智能体配置
+        """
         agent_id = self._slugify(agent_name)
-        display_name = agent_name.replace("-", " ").replace("_", " ").title()
 
         # 动态匹配与 agent 职责相关的技能（防止超级单体，仅加载 top-k）
         matched_skills = self._pick_skills_for_agent(agent_name, top_k=6)
+
+        # 用 LLM 生成符合 SOLID 原则的高质量配置
+        profile = self._llm_generate_agent_profile(agent_name, task_description)
 
         conn = sqlite3.connect(self._db_path)
         try:
@@ -243,15 +256,7 @@ class AgentResolver:
                 agent_id = f"{agent_id}-{uuid.uuid4().hex[:4]}"
 
             skill_ids_json = json.dumps(matched_skills)
-            description = f"由编排器自动创建: {agent_name}"
-            system_prompt = (
-                f"你是 {display_name}，由 Sivan 系统自动创建的智能体。\n\n"
-                f"你的任务是根据用户描述提供专业帮助。\n\n"
-                f"行为准则：\n"
-                f"1. 直接回答问题，提供清晰、有价值的输出\n"
-                f"2. 如果不确定，诚实地说明局限性\n"
-                f"3. 保持专业、简洁的回复风格\n"
-            )
+            tools_json = json.dumps(profile.get("tools", []))
 
             cursor.execute(
                 """INSERT INTO agents
@@ -261,9 +266,14 @@ class AgentResolver:
                     version, status, created_by, agent_type)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    agent_id, display_name, description, "auto-created",
-                    system_prompt, "",
-                    "[]", skill_ids_json,
+                    agent_id,
+                    profile.get("display_name", agent_name),
+                    profile.get("description", f"由编排器自动创建: {agent_name}"),
+                    "auto-created",
+                    profile.get("system_prompt", ""),
+                    profile.get("craft_declaration", ""),
+                    tools_json,
+                    skill_ids_json,
                     "1.0.0", "active", "agent_resolver", "dynamic",
                 ),
             )
@@ -275,6 +285,161 @@ class AgentResolver:
         # 同步到内存缓存
         self._load_registry()
         return agent_id
+
+    def _get_llm_provider(self) -> Any:
+        """从 llm_providers 表读取当前激活的 LLM 提供商。"""
+        try:
+            conn = sqlite3.connect(self._db_path)
+            conn.row_factory = sqlite3.Row
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='llm_providers'"
+                )
+                if not cursor.fetchone():
+                    return None
+                cursor.execute(
+                    "SELECT * FROM llm_providers WHERE is_active = 1 LIMIT 1"
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                config = dict(row)
+                # 类型转换
+                for key in ("max_tokens", "temperature", "timeout"):
+                    if key in config and config[key] is not None:
+                        try:
+                            config[key] = int(config[key]) if key == "max_tokens" else float(config[key])
+                        except (ValueError, TypeError):
+                            pass
+                from infrastructure.llm.factory import create_llm_provider
+                return create_llm_provider(config)
+            finally:
+                conn.close()
+        except Exception as exc:
+            logger.warning("获取 LLM 提供商失败: %s", exc)
+            return None
+
+    def _llm_generate_agent_profile(self, agent_name: str, task_description: str = "") -> dict[str, Any]:
+        """用 LLM 生成符合规范的智能体配置。
+
+        生成内容规范：
+        - display_name: 中文显示名称
+        - description: 角色描述 + 具体职责
+        - system_prompt: 包含全部 8 个必需章节
+        - craft_declaration: 符合角色特色的匠心宣言
+
+        Returns:
+            包含 display_name / description / system_prompt / craft_declaration 的 dict
+        """
+        provider = self._get_llm_provider()
+        if not provider:
+            logger.warning("无可用 LLM 提供商，使用默认配置创建智能体 '%s'", agent_name)
+            return self._default_profile(agent_name)
+
+        generation_prompt = (
+            "你是一个智能体配置生成器。根据智能体角色名称和任务描述，生成高质量的智能体配置。\n"
+            "所有内容必须使用中文，且必须与角色领域高度相关。\n\n"
+            f"智能体角色名称: {agent_name}\n"
+            f"用户任务描述: {task_description or '（无具体任务描述）'}\n\n"
+            "请返回严格的 JSON 格式（不要包含其他文字、不要用 markdown 代码块包裹）：\n"
+            "{\n"
+            '    "display_name": "中文显示名称（2-8 个字，简洁明确）",\n'
+            '    "description": "角色定位（100字，详细描述该智能体的专业领域）",\n'
+            '    "system_prompt": "完整系统提示词（必须包含下方所列全部章节）",\n'
+            '    "craft_declaration": "匠心宣言（一句符合角色特色的宣言，20字左右）",\n'
+            '    "tools": []\n'
+            "}\n\n"
+            "### system_prompt 必须包含以下章节（用 ## 标记标题）：\n"
+            "1. 详细角色描述 — 专业、具体的角色定位和背景\n"
+            "2. 匠心宣言 — 与 craft_declaration 一致\n"
+            "3. 核心职责 — 3-5 条具体职责，用 - 列表\n"
+            "4. 退出标准检查表 — 判断任务完成的 checklist，用 - 列表\n"
+            "5. 反模式警示 — 该角色容易犯的错误，用 - 列表\n"
+            "6. 禁止行为 — 明确不允许做的事情，用 - 列表\n"
+            "7. 可用技能 — 简要说明当前拥有的技能（与实际加载的技能对应）\n"
+            "8. 工具权限 — 可以使用的工具类型\n\n"
+            "### 质量要求：\n"
+            "- display_name 必须是有意义的中文名称，不能直接音译英文\n"
+            "- description 必须包含角色定位描述\n"
+            "- system_prompt 每个章节内容必须针对该角色定制，不能是通用模板\n"
+            "- craft_declaration 要体现工匠精神，与角色专业领域匹配\n"
+            "- 所有生成内容必须遵循 SOLID 原则：单一职责（该智能体只做自己领域的事）、开闭原则（可扩展不可修改原有行为）\n"
+            "- 禁止创建与其他智能体职责重叠的内容\n"
+            "- 所有内容必须与用户当前任务领域（{task_description or '通用'}）相关\n"
+        )
+
+        try:
+            result = provider.chat([
+                {"role": "system", "content": "你是一个专业的智能体配置文件生成器。只输出 JSON，不要包含任何其他内容。"},
+                {"role": "user", "content": generation_prompt},
+            ])
+            content = result.content.strip()
+            # 清理可能的 markdown 代码块包裹
+            import re as _re
+            match = _re.search(r'\{.*\}', content, _re.DOTALL)
+            if match:
+                content = match.group(0)
+            profile = json.loads(content)
+            # 验证必需字段
+            required = ("display_name", "description", "system_prompt", "craft_declaration")
+            missing = [k for k in required if not profile.get(k)]
+            if missing:
+                logger.warning("LLM 生成的配置缺少字段 %s，使用默认配置补充", missing)
+                defaults = self._default_profile(agent_name)
+                for k in missing:
+                    profile[k] = defaults[k]
+            # 验证 system_prompt 包含必需章节
+            required_sections = [
+                "详细角色描述", "匠心宣言", "核心职责", "退出标准检查表",
+                "反模式警示", "可用技能", "工具权限", "禁止行为",
+            ]
+            missing_sections = [s for s in required_sections if s not in profile.get("system_prompt", "")]
+            if missing_sections:
+                logger.warning("LLM 生成的 system_prompt 缺少章节 %s，追加补充", missing_sections)
+                for section in missing_sections:
+                    profile["system_prompt"] += f"\n\n## {section}\n（待补充）"
+            return profile
+        except Exception as exc:
+            logger.warning("LLM 生成智能体配置失败: %s，使用默认配置", exc)
+            return self._default_profile(agent_name)
+
+    @staticmethod
+    def _default_profile(agent_name: str) -> dict[str, Any]:
+        """LLM 不可用时的默认配置。"""
+        display = agent_name.replace("-", " ").replace("_", " ").title()
+        return {
+            "display_name": display,
+            "description": f"由编排器自动创建的专业智能体，负责 {display} 领域的工作。",
+            "system_prompt": (
+                f"# {display}\n\n"
+                f"## 详细角色描述\n"
+                f"你是 {display}，由 Sivan 系统动态创建的专业智能体。\n\n"
+                f"## 匠心宣言\n"
+                f"专注品质，精益求精。\n\n"
+                f"## 核心职责\n"
+                f"- 根据用户需求提供专业领域的技术支持\n"
+                f"- 输出高质量、可执行的结果\n"
+                f"- 在职责范围内独立完成任务\n\n"
+                f"## 退出标准检查表\n"
+                f"- [ ] 用户问题是否已得到完整回答\n"
+                f"- [ ] 输出结果是否达到可交付标准\n"
+                f"- [ ] 是否已考虑边界情况和异常场景\n\n"
+                f"## 反模式警示\n"
+                f"- 不要越界处理不属于本领域的问题\n"
+                f"- 不要在没有足够信息的情况下做出假设\n"
+                f"- 不要输出未经检验的代码或配置\n\n"
+                f"## 可用技能\n"
+                f"- 领域专业知识与技能\n\n"
+                f"## 工具权限\n"
+                f"- 根据任务需要调用适当的工具\n\n"
+                f"## 禁止行为\n"
+                f"- 不得执行与角色职责无关的操作\n"
+                f"- 不得访问未经授权的数据\n"
+            ),
+            "craft_declaration": "以匠心守护品质，用专业创造价值。",
+            "tools": [],
+        }
 
     def create_skill(self, skill_name: str) -> str:
         """创建新技能，返回 skill_id。"""

@@ -152,7 +152,10 @@ class RoutingService:
         return agent
 
     def route_with_all_strategies(self, task_description: str, context: dict[str, Any]) -> dict[str, Any]:
-        """用所有策略分别路由，返回各策略结果和自适应结果。"""
+        """用所有策略分别路由，返回各策略结果和自适应结果。
+
+        结果中包含 adaptive 决策（自动持久化到 routing_decisions 表）。
+        """
         start_time = time.time()
         results: dict[str, Any] = {}
 
@@ -175,6 +178,9 @@ class RoutingService:
 
         total_elapsed = int((time.time() - start_time) * 1000)
 
+        # 持久化自适应路由决策到 routing_decisions 表
+        self._record_routing_decision(task_description, context, adaptive_agent, adaptive_time)
+
         return {
             "strategies": results,
             "adaptive": adaptive_agent,
@@ -182,6 +188,27 @@ class RoutingService:
             "consensus": consensus_agent,
             "total_time_ms": total_elapsed,
         }
+
+    def _record_routing_decision(
+        self, task_description: str, context: dict[str, Any] | None,
+        selected_agent: str | None, execution_time_ms: int,
+    ) -> None:
+        """记录路由决策到数据库。"""
+        from infrastructure.logging.db_logger import get_db_logger
+        db_log = get_db_logger()
+        existing_trace_id = (context or {}).pop("trace_id", None) or ""
+        trace_id, _ = db_log.trace("routing", "route_signal", task_description[:200],
+                                   {"task_len": len(task_description)},
+                                   trace_id=existing_trace_id)
+        decision = RoutingDecision(
+            task_description=task_description,
+            selected_agent=selected_agent,
+            decision_id=trace_id,
+            routing_strategy=RoutingStrategy(self._domain.current_strategy),
+            context_json=json.dumps(context, ensure_ascii=False) if context else None,
+            execution_time_ms=execution_time_ms,
+        )
+        self._repo.record_decision(decision)
 
     def record_feedback(
         self,
