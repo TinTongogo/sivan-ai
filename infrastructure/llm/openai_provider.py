@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Any
 
@@ -42,10 +43,14 @@ class OpenAIProvider(BaseLLMProvider):
 
     def _build_client(self) -> OpenAI:
         cfg = self._config
-        api_key = cfg.get("api_key") or ""
+        api_key = cfg.get("api_key") or os.environ.get("OPENAI_API_KEY", "")
         base_url = normalize_base_url(cfg.get("api_url", ""))
         timeout = int(cfg.get("timeout", 120))
-        kwargs: dict = {"api_key": api_key}
+        kwargs: dict = {}
+        if api_key:
+            kwargs["api_key"] = api_key
+        else:
+            kwargs["api_key"] = "sk-placeholder"  # 本地 API（Ollama/vLLM）通常接受任意 key，空 key 会触发 SDK 前置校验
         if base_url:
             kwargs["base_url"] = base_url
         if timeout:
