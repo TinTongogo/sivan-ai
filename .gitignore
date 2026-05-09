@@ -70,3 +70,5 @@ test_data/
 *.test.json
 *.test.yaml
 *.test.yml
+
+.github
